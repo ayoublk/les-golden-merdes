@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
+      - name: Install build dependencies
+        run: npm ci
       - name: Test game logic
         run: node --test tests/*.test.mjs
       - name: Prepare static site

@@ -18,9 +18,10 @@ GitHub Pages héberge l’interface ; les salons, votes et fonctions restent sur
 
 ## Essayer immédiatement
 
-Node.js 22 ou supérieur. Aucune dépendance pour l’interface.
+Node.js 22 ou supérieur. `npm ci` installe les dépendances de construction et de test ; la bibliothèque PDF est ensuite servie avec le site.
 
 ```powershell
+npm ci
 node build.mjs
 node server.mjs
 ```
@@ -102,3 +103,10 @@ Les transactions protègent les révisions et les baux de dix minutes contre les
 Les nouveaux tests couvrent neuf films simultanés, doublons, reprises, quotas, refus, interruptions, révisions et confidentialité du synopsis, avec un fournisseur simulé. `node scripts/test-queue-live.mjs` vérifie la chaîne réelle Firestore → Cloud Tasks → worker sur un salon déjà arrêté : aucun appel texte ou image payant. `scripts/test-images-live.mjs` est au contraire un test payant, à lancer explicitement après validation du budget ; augmenter sa fenêtre d’attente si les quotas sont faibles.
 
 La reprise périodique ne redépose pas chaque minute les tâches déjà en attente : un dispatch confirmé dispose de quinze minutes avant réparation pour éviter d’engorger la file. Le cache et les verrous sont testés séparément. Si Firebase CLI 14 échoue à créer la politique IAM d’une file vide (`bindings` absent), `node scripts/repair-queue-iam.mjs` conserve les permissions existantes et ajoute uniquement le rôle d’enqueuer sur la file du jeu pour son propre compte de service.
+
+
+## Export PDF de la soirée
+
+Le bouton **Exporter en PDF** du palmarès télécharge un document A4 avec une couverture, puis pour chaque film son titre, son auteur, ses points, son synopsis, son affiche, ses neuf questions/réponses complètes et ses deux scènes. Le ou les vainqueurs apparaissent à la fin. Les réponses longues sont réparties sur plusieurs pages et les images manquantes sont signalées. Les polices Bitstream Vera et jsPDF sont servies depuis le site ; le PDF est créé localement dans le navigateur, sans nouvelle génération IA. Les images sont intégrées en JPEG avec un grand côté de 1600 px maximum.
+
+La commande serveur `exportPdf` fournit les réponses privées uniquement aux membres du salon, une fois `phase=finished`. Le mode démo utilise ses réponses locales. L’ancien export JSON est conservé. Le chargement et les doubles clics utilisent les mêmes protections que les autres commandes. `node scripts/test-export-live.mjs` contrôle les autorisations dans un salon de test jetable, sans appel IA. `node scripts/render-pdf-fixture.mjs` produit un document de contrôle à partir des trois JPEG de test placés dans `artifacts/pdf-qa/`.

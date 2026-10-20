@@ -24,3 +24,11 @@ export function nextQuestion(room,submissions,{skipImages=false}={}){if(room.pha
 export function finish(room){if(room.phase!=='films'||!room.voteClosed)fail('Clôture le vote final avant le palmarès.');const max=Math.max(...room.players.map(p=>room.scores[p.id]||0));room.winners=room.players.filter(p=>(room.scores[p.id]||0)===max).map(p=>p.id);room.phase='finished';return room;}
 
 export function stop(room,now=Date.now()){if(['finished','stopped'].includes(room.phase))fail('La partie est déjà terminée.');room.phase='stopped';room.stoppedAt=now;room.voteOpen=false;room.voteClosed=true;room.winners=[];return room;}
+
+export function exportReport(room,submissions,now=Date.now()){
+ if(room.phase!=='finished')fail('Le récapitulatif est disponible après le palmarès.');
+ return {version:1,code:room.code||'',exportedAt:now,questions:room.questions.map(q=>q.title),films:room.players.map(p=>{
+  const sub=submissions[p.id],film=room.films.find(f=>f.id===p.id);
+  return {id:p.id,author:p.name,title:sub?.answers?.[8]||film?.title||'Film sans titre',answers:room.questions.map((_,i)=>sub?.answers?.[i]||'Réponse indisponible'),synopsis:sub?.synopsis||film?.synopsis||'',images:[...(sub?.images||film?.images||[])].slice(0,3),points:room.scores[p.id]||0};
+ }),winners:[...room.winners]};
+}

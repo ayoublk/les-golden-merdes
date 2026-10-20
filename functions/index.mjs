@@ -31,6 +31,11 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   if(action==='join'){assert(uid!==room.hostId,'L’animateur ne participe pas au casting.');game.join(room,uid,data.name);saveRoom(tx,ref,room);return {ok:true};}
   const host=room.hostId===uid,player=room.players.find(p=>p.id===uid);
   assert(host||player,'Vous ne faites pas partie de ce salon.');
+  if(action==='exportPdf'){
+   assert(room.phase==='finished','Le récapitulatif est disponible après le palmarès.');
+   const docs=await tx.getAll(...room.players.map(p=>ref.collection('submissions').doc(p.id)));
+   return game.exportReport(room,Object.fromEntries(docs.map((doc,i)=>[room.players[i].id,doc.data()])));
+  }
   if(action==='stop'){assert(host,'Seul l’animateur peut arrêter la partie.');game.stop(room);saveRoom(tx,ref,room);return {ok:true};}
   assert(room.phase!=='stopped','Cette partie a été arrêtée par l’animateur.');
   game.assertCursor(room,data.expected);

@@ -7,3 +7,4 @@ site.tar.gz
 .sites-*
 artifacts/
 dist/assets/
+dist/vendor/

@@ -1,1 +1,1 @@
-{"name":"mauvais-sort","private":true,"type":"module","scripts":{"dev":"node server.mjs","build":"node build.mjs","test":"node --test tests/*.test.mjs"}}
+{"name":"mauvais-sort","private":true,"type":"module","scripts":{"dev":"node server.mjs","build":"node build.mjs","test":"node --test tests/*.test.mjs"},"devDependencies":{"jspdf":"4.2.1"}}
