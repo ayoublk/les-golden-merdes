@@ -7,7 +7,7 @@ export function planRecovery(room,submissions,{id,force=false,now=Date.now()}={}
  for(const p of room.players){
   if(id&&p.id!==id)continue;
   const sub=submissions[p.id];if(!p.submitted||!sub)continue;
-  const active=['queued','generating'].includes(p.generation);
+  const active=['queued','generating','retrying'].includes(p.generation);
   const stale=active&&now-(p.generationAt||0)>=STALE_IMAGE_MS;
   if(p.generation==='ready')continue;
   if(active&&!stale&&!force){if(id)throw Error('Une génération est en cours. Confirme la relance de secours pour la remplacer.');continue;}

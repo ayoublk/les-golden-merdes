@@ -39,9 +39,9 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
    const answers=game.validateAnswers(data.answers),subRef=ref.collection('submissions').doc(uid),previous=(await tx.get(subRef)).data();
    if(previous&&JSON.stringify(previous.answers)===JSON.stringify(answers)&&!(player.generation==='unavailable'&&imageGenerationEnabled.value()))return {ok:true};
    const revision=(previous?.revision||0)+1;
-   player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();player.generationCount=0;player.generationError=null;
-   tx.set(subRef,{answers,images:[],revision,attempt:1,submittedAt:Date.now()});
-   if(imageGenerationEnabled.value())tx.create(db.collection('generationJobs').doc(),{code:data.code,uid,revision,attempt:1,status:'queued'});saveRoom(tx,ref,room);return {ok:true};
+   player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();player.generationCount=0;player.generationError=null;player.generationStage='brief';player.synopsisReady=false;
+   tx.set(subRef,{answers,images:[],synopsis:'',artDirection:null,revision,attempt:1,submittedAt:Date.now()});
+   if(imageGenerationEnabled.value())tx.create(db.collection('generationJobs').doc(),{code:data.code,uid,revision,attempt:1,status:'queued',pipelineVersion:2,createdAt:Date.now()});saveRoom(tx,ref,room);return {ok:true};
   }
   if(action==='vote'){
    game.validateVote(room,uid,data.target);const key=voteKey(room),voteRef=ref.collection('votes').doc(`${key}_${uid}`),previous=await tx.get(voteRef);
@@ -72,7 +72,7 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
    case 'retry':{
     assert(imageGenerationEnabled.value(),'La génération d’images n’est pas encore activée sur le serveur.');
     const plans=planRecovery(room,submissions,{id:data.id,force:data.force===true});
-    for(const plan of plans){const p=room.players.find(p=>p.id===plan.id);p.generation='queued';p.generationAt=Date.now();p.generationCount=plan.images.length;p.generationError=null;tx.update(ref.collection('submissions').doc(plan.id),{attempt:plan.attempt,lastRetryAt:plan.lastRetryAt});tx.create(db.collection('generationJobs').doc(),{code:data.code,uid:plan.id,revision:plan.revision,attempt:plan.attempt,status:'queued'});}
+    for(const plan of plans){const p=room.players.find(p=>p.id===plan.id);p.generation='queued';p.generationAt=Date.now();p.generationCount=plan.images.length;p.generationError=null;p.generationRetryAt=null;tx.update(ref.collection('submissions').doc(plan.id),{attempt:plan.attempt,lastRetryAt:plan.lastRetryAt});tx.create(db.collection('generationJobs').doc(),{code:data.code,uid:plan.id,revision:plan.revision,attempt:plan.attempt,status:'queued',pipelineVersion:2,createdAt:Date.now()});}
     break;
    }
    default:throw new HttpsError('invalid-argument','Commande inconnue.');
