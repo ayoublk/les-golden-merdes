@@ -1,4 +1,4 @@
-# Mauvais Sort · Le Septième Stream
+# Les Golden Merdes · Le Septième Stream
 
 Jeu d’Halloween en français pour 2 à 20 joueurs, animé depuis une régie. L’animateur ne joue pas et ne vote pas. Interface adaptative, mode stream, démo locale et backend Firebase préparé.
 
