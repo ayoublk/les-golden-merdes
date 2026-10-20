@@ -17,7 +17,7 @@ La démo conserve sa partie uniquement en mémoire et utilise une affiche illust
 
 ## Connecter Firebase
 
-Le projet Firebase n’a pas encore été créé : le multijoueur et les images réelles sont **non configurés**. Aucune clé IA n’a été ajoutée. La publication Sites est une prévisualisation privée ; Firebase Hosting est prévu pour l’accès des invités.
+Le projet `emestreamhalloween` est configuré et le site public est accessible sur https://emestreamhalloween.web.app. Le serveur du jeu se déploie indépendamment du générateur d’images. La clé IA n’a pas encore été ajoutée : `ENABLE_IMAGE_GENERATION=false` permet de terminer une partie sans attendre des images qui ne peuvent pas encore être produites. L’interface indique « IA pas encore activée » et utilise des emplacements d’images. La publication Sites reste une prévisualisation privée.
 
 1. Créer un projet Firebase, une application Web, une base **Cloud Firestore** et un bucket **Storage**. Choisir une région européenne compatible (le code Functions utilise `europe-west1`). Activer **Authentication → Anonymous**. Les Cloud Functions et le stockage demandent un projet avec facturation activée ; la génération d’images est facturée par le fournisseur IA selon l’usage.
 2. Copier la configuration **publique** de l’application Web dans `dist/config.js` en suivant `dist/config.example.js`. Garder `region = 'europe-west1'`. Ne jamais mettre une clé IA dans ces fichiers.
@@ -27,14 +27,13 @@ Le projet Firebase n’a pas encore été créé : le multijoueur et les images 
 npm install -g firebase-tools
 firebase login
 firebase use --add
-npm install --prefix functions
-firebase functions:secrets:set OPENAI_API_KEY
+npm --prefix functions ci
 node build.mjs
 node --test tests/game.test.mjs
-firebase deploy --only functions,firestore:rules,storage,hosting
+firebase deploy --only 'functions:default,firestore:rules,storage,hosting'
 ```
 
-Le CLI demande le secret de manière interactive ; ne pas le passer dans une commande, un fichier partagé ou le chat. `IMAGE_MODEL` est un paramètre Functions (`gpt-image-1` par défaut). Pour le modifier, utiliser un modèle de génération compatible avec les paramètres de `functions/index.mjs`. Les noms de modèles, tailles et accès doivent être vérifiés auprès du fournisseur avant le stream.
+Pour activer les images, installer les dépendances depuis le dossier `image-functions` (`npm install`), puis saisir la clé avec `firebase functions:secrets:set OPENAI_API_KEY --project emestreamhalloween`. Le CLI demande le secret de manière interactive ; ne pas le passer dans une commande, un fichier partagé ou le chat. Exécuter `node build.mjs`, puis `firebase deploy --only functions:images`. Seulement après ce déploiement, mettre `ENABLE_IMAGE_GENERATION=true` dans le fichier local ignoré `functions/.env.emestreamhalloween`, et redéployer `functions:default`. `IMAGE_MODEL` est un paramètre du générateur (`gpt-image-1` par défaut). Les noms de modèles, tailles et accès doivent être vérifiés auprès du fournisseur avant le stream.
 
 4. Dans Firebase Authentication, ajouter le domaine d’hébergement aux domaines autorisés si nécessaire. Ouvrir le site Firebase Hosting sur l’ordinateur de l’animateur, créer un salon, partager l’invitation, puis faire rejoindre deux appareils distincts pour une répétition.
 5. Vérifier une génération réelle, sa durée et le budget avant l’émission. App Check est recommandé avant une ouverture au grand public ; les fonctions callable demandent une identité anonyme, mais ne sont pas actuellement configurées pour imposer App Check.
@@ -54,7 +53,7 @@ Le CLI demande le secret de manière interactive ; ne pas le passer dans une com
 
 `dist/` : interface statique sans compilation ni framework. Les SDK Firebase sont chargés depuis le CDN officiel uniquement lorsque Firebase est configuré. Les polices Google disposent de polices de repli.
 
-`functions/core.mjs` : transitions et calcul du score, partagés avec le mode démo. `functions/index.mjs` : callable `gameAction` avec transactions Firestore, rôle animateur vérifié sur le serveur, validation des votes, puis déclencheur `generateFilm` sur la collection privée `generationJobs`.
+`functions/core.mjs` : transitions et calcul du score, partagés avec le mode démo. `functions/index.mjs` : callable `gameAction` avec transactions Firestore, rôle animateur vérifié sur le serveur et validation des votes (codebase `default`). `image-functions/index.mjs` : déclencheur `generateFilm` sur la collection privée `generationJobs` (codebase `images`), déployable séparément avec sa clé privée. `node build.mjs` synchronise le moteur partagé vers ces deux consommateurs.
 
 Les documents `rooms/{code}` contiennent uniquement l’état visible du salon, ses participants et les réponses déjà révélées. Les réponses complètes restent dans `submissions/{uid}`, lisibles uniquement par leur propriétaire côté client. Les votes sont privés et accessibles uniquement par le serveur. Toute écriture directe Firestore depuis le navigateur est interdite. Storage est écrit uniquement par Admin SDK ; les URL de téléchargement à jeton sont partagées via les films quand ils sont révélés. Les réponses et images sont conservées sans purge automatique ; elles peuvent être supprimées depuis le projet Firebase après l’événement.
 
@@ -68,6 +67,6 @@ node --check dist/app.js
 node --check functions/index.mjs
 ```
 
-Neuf tests couvrent les transitions, l’expiration non bloquante, le vote pour soi, les points par voix, le bonus final, les égalités, l’absence de voix et les images indisponibles. Le parcours démo complet a aussi été testé au navigateur. Le backend réel, les règles dans l’émulateur et les appels IA doivent encore être vérifiés avec un projet Firebase configuré.
+Dix tests couvrent les transitions, l’expiration non bloquante, le vote pour soi, les points par voix, le bonus final, les égalités, l’absence de voix et les images indisponibles ou non activées. Une partie complète a aussi été vérifiée sur le projet Firebase réel avec trois identités anonymes : corrections, neuf tours de vote, bonus final et vainqueurs ex æquo. Les lectures privées, écritures directes et commandes d’animateur non autorisées ont été rejetées. La création d’un salon depuis le site publié a été vérifiée au navigateur. Les appels IA restent à vérifier après ajout de la clé. `node scripts/test-live.mjs` relance le test d’intégration (réservé à la configuration sans génération IA, crée un salon de test et nettoie ses comptes anonymes).
 
 Références : [fonctions callable Firebase](https://firebase.google.com/docs/functions/callable), [transactions Firestore](https://firebase.google.com/docs/firestore/manage-data/transactions), [authentification anonyme](https://firebase.google.com/docs/auth/web/anonymous-auth), [API de génération d’images OpenAI](https://developers.openai.com/api/reference/resources/images/methods/generate).
