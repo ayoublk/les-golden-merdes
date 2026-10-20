@@ -14,7 +14,11 @@ const db=getFirestore(),REGION='europe-west1',store=createStore(db);
 const concurrency=Math.min(20,Math.max(1,Number(process.env.IMAGE_CONCURRENCY)||9));
 const dispatchRate=Math.max(.01,Math.min(10,Number(process.env.IMAGE_DISPATCH_PER_SECOND)||.1));
 const runtimeAccount=process.env.GENERATION_SERVICE_ACCOUNT||'478334155470-compute@developer.gserviceaccount.com';
-async function enqueue(jobId,step,delay=0){await getFunctions().taskQueue(`locations/${REGION}/functions/processFilmStep`).enqueue({jobId,step},{scheduleDelaySeconds:Math.ceil(delay),dispatchDeadlineSeconds:540});}
+async function enqueue(jobId,step,delay=0){
+ await getFunctions().taskQueue(`locations/${REGION}/functions/processFilmStep`).enqueue({jobId,step},{scheduleDelaySeconds:Math.ceil(delay),dispatchDeadlineSeconds:540});
+ const ref=db.doc(`generationJobs/${jobId}`);
+ await db.runTransaction(async tx=>{const job=(await tx.get(ref)).data();if(job&&!TERMINAL.has(job.status)&&(!job.step||job.step===step))tx.update(ref,{step,lastEnqueuedAt:Date.now()+Math.ceil(delay)*1000});});
+}
 const imageIndex={poster:0,scene1:1,scene2:2};
 function fileFor(work,step){return getStorage().bucket().file(`films/${work.job.code}/${work.job.uid}/${work.job.revision}-${work.job.attempt}-${imageIndex[step]}.png`);}
 function imageUrl(file,token){return `https://firebasestorage.googleapis.com/v0/b/${file.bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;}

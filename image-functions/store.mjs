@@ -32,7 +32,7 @@ export function createStore(db){
    tx.update(subRef,{images:sub.images||[],synopsis:sub.synopsis||'',artDirection:sub.artDirection||null});
    if(p){p.generation=next?'queued':'ready';p.generationStage=next||'done';p.generationCount=(sub.images||[]).length;p.generationError=null;p.generationAt=now;p.synopsisReady=!!sub.synopsis;}
    updateFilm(room,{...sub,uid:job.uid});saveRoom(tx,roomRef,room);
-   tx.update(jobRef,{status:next?'queued':'done',step:next,leaseUntil:0,nextRunAt:0,updatedAt:now,...(!next?{finishedAt:now}:{})});
+   tx.update(jobRef,{status:next?'queued':'done',step:next,leaseUntil:0,nextRunAt:0,lastEnqueuedAt:0,updatedAt:now,...(!next?{finishedAt:now}:{})});
    return next;
   });},
   async fail(work,info,retry,nextRunAt){return db.runTransaction(async tx=>{
@@ -42,14 +42,14 @@ export function createStore(db){
    if(!room||room.phase==='stopped'){tx.update(jobRef,{status:'cancelled',leaseUntil:0,finishedAt:Date.now()});return false;}
    const p=room.players.find(p=>p.id===job.uid);if(p){p.generation=retry?'retrying':'error';p.generationError=info.code;p.generationStage=work.step;p.generationAt=Date.now();p.generationRetryAt=retry?nextRunAt:null;}
    updateFilm(room,{...sub,uid:job.uid});saveRoom(tx,roomRef,room);
-   tx.update(jobRef,{status:retry?'retrying':'error',errorCode:info.code,errorStatus:info.status,requestId:info.requestId,leaseUntil:0,nextRunAt:retry?nextRunAt:0,updatedAt:Date.now(),...(!retry?{finishedAt:Date.now()}:{})});
+   tx.update(jobRef,{status:retry?'retrying':'error',errorCode:info.code,errorStatus:info.status,requestId:info.requestId,leaseUntil:0,nextRunAt:retry?nextRunAt:0,lastEnqueuedAt:0,updatedAt:Date.now(),...(!retry?{finishedAt:Date.now()}:{})});
    if(info.status===429&&retry)tx.set(controlRef,{cooldownUntil:Math.max(c.data()?.cooldownUntil||0,nextRunAt)});
    console.warn('Film step failed',{jobId:work.jobId,step:work.step,attempt:work.stepAttempts,retry,...info});
    return true;
   });},
   async pending(now){
    const docs=await db.collection('generationJobs').where('status','in',['queued','running','retrying']).limit(100).get();
-   return docs.docs.filter(d=>d.data().pipelineVersion===2&&(d.data().leaseUntil||0)<=now&&(d.data().nextRunAt||0)<=now).map(d=>({jobId:d.id,...d.data()}));
+   return docs.docs.filter(d=>{const j=d.data();return j.pipelineVersion===2&&(j.leaseUntil||0)<=now&&(j.nextRunAt||0)<=now&&(j.status==='running'||!j.lastEnqueuedAt||now-j.lastEnqueuedAt>=15*60*1000);}).map(d=>({jobId:d.id,...d.data()}));
   }
  };
 }

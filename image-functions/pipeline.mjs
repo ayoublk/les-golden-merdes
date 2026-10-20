@@ -21,7 +21,7 @@ export function classifyError(error){
  const retryable=!permanent.includes(code)&&(status===408||status===429||status>=500||['AbortError','TimeoutError','TypeError'].includes(error.name)||['invalid_output','ETIMEDOUT','ECONNRESET',4,10,13,14,'unavailable','aborted'].includes(error.code));
  return {code,status,retryable,requestId:error.requestId||null};
 }
-export function retryDelay(attempt,retryAfter=0,random=Math.random){return Math.min(900,Math.max(retryAfter,Math.round(20*2**(attempt-1)+random()*10)));}
+export function retryDelay(attempt,retryAfter=0,random=Math.random){return Math.max(retryAfter,Math.min(900,Math.round(20*2**(attempt-1)+random()*10)));}
 export async function runStep({jobId,step,store,provider,enqueue,now=Date.now,random=Math.random}){
  const work=await store.claim(jobId,step,now());
  if(!work)return;
