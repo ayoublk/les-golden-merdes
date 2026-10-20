@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  match /rooms/{code} {
+   allow get: if request.auth != null && (resource.data.hostId == request.auth.uid || request.auth.uid in resource.data.memberIds);
+   allow list, write: if false;
+   match /submissions/{uid} {
+    allow get: if request.auth != null && request.auth.uid == uid;
+    allow list, write: if false;
+   }
+   match /votes/{id} { allow read, write: if false; }
+  }
+  match /{document=**} { allow read, write: if false; }
+ }
+}
