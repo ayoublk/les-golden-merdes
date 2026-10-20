@@ -33,7 +33,7 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   if(action==='submit'){
    assert(player&&room.phase==='writing','Les révélations ont commencé ou vous n’êtes pas joueur.');
    const answers=game.validateAnswers(data.answers),subRef=ref.collection('submissions').doc(uid),previous=(await tx.get(subRef)).data();
-   if(previous&&JSON.stringify(previous.answers)===JSON.stringify(answers))return {ok:true};
+   if(previous&&JSON.stringify(previous.answers)===JSON.stringify(answers)&&!(player.generation==='unavailable'&&imageGenerationEnabled.value()))return {ok:true};
    const revision=(previous?.revision||0)+1;
    player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();
    tx.set(subRef,{answers,images:[],revision,attempt:1,submittedAt:Date.now()});
