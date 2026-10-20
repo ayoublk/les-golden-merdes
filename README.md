@@ -2,6 +2,12 @@
 
 Jeu d’Halloween en français pour 2 à 20 joueurs, animé depuis une régie. L’animateur ne joue pas et ne vote pas. Interface adaptative, mode stream, démo locale et backend Firebase préparé.
 
+## Publication GitHub Pages
+
+Le site public de test est déployé depuis la branche `main` par `.github/workflows/pages.yml`. Chaque push exécute les dix tests, prépare `dist/` et publie le site avec GitHub Actions. Les chemins des ressources et les invitations sont relatifs pour fonctionner aussi dans le sous-dossier GitHub Pages du dépôt.
+
+GitHub Pages héberge l’interface ; les salons, votes et fonctions restent sur Firebase (`emestreamhalloween`). La configuration Firebase Web est publique. La clé IA reste exclusivement dans Firebase Secret Manager et aucun secret Firebase ou OpenAI n’est nécessaire dans GitHub Actions. Le blocage des crédits API OpenAI décrit plus bas concerne toujours les images, pas le multijoueur.
+
 ## Essayer immédiatement
 
 Node.js 22 ou supérieur. Aucune dépendance pour l’interface.
