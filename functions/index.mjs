@@ -31,6 +31,8 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   if(action==='join'){assert(uid!==room.hostId,'L’animateur ne participe pas au casting.');game.join(room,uid,data.name);saveRoom(tx,ref,room);return {ok:true};}
   const host=room.hostId===uid,player=room.players.find(p=>p.id===uid);
   assert(host||player,'Vous ne faites pas partie de ce salon.');
+  if(action==='stop'){assert(host,'Seul l’animateur peut arrêter la partie.');game.stop(room);saveRoom(tx,ref,room);return {ok:true};}
+  assert(room.phase!=='stopped','Cette partie a été arrêtée par l’animateur.');
   game.assertCursor(room,data.expected);
   if(action==='submit'){
    assert(player&&room.phase==='writing','Les révélations ont commencé ou vous n’êtes pas joueur.');

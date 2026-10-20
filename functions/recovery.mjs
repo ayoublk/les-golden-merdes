@@ -1,5 +1,6 @@
 export const STALE_IMAGE_MS=10*60*1000;
 export function planRecovery(room,submissions,{id,force=false,now=Date.now()}={}){
+ if(room.phase==='stopped')throw Error('Cette partie a été arrêtée.');
  if(room.phase==='lobby')throw Error('Les films ne sont pas encore envoyés.');
  if(id&&!room.players.some(p=>p.id===id))throw Error('Joueur inconnu.');
  const plans=[];
