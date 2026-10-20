@@ -82,6 +82,6 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
    }
    default:throw new HttpsError('invalid-argument','Commande inconnue.');
   }
-  saveRoom(tx,ref,room);return {ok:true};
+  saveRoom(tx,ref,room);return action==='finish'?{ok:true,room}:{ok:true};
  });}catch(e){if(e instanceof HttpsError)throw e;throw new HttpsError('failed-precondition',e.message||'Action impossible.');}
 });

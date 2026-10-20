@@ -112,3 +112,10 @@ Le bouton **Exporter en PDF** du palmarès télécharge un document A4 avec une 
 La commande serveur `exportPdf` fournit les réponses privées uniquement aux membres du salon, une fois `phase=finished`. Le mode démo utilise ses réponses locales. L’ancien export JSON est conservé. Le chargement et les doubles clics utilisent les mêmes protections que les autres commandes. `node scripts/test-export-live.mjs` contrôle les autorisations dans un salon de test jetable, sans appel IA. `node scripts/render-pdf-fixture.mjs` produit un document de contrôle à partir des trois JPEG de test placés dans `artifacts/pdf-qa/`.
 
 Pour l’intégration des pixels des images dans le PDF, `node scripts/configure-pdf-cors.mjs` ajoute une règle CORS limitée à GET/HEAD pour GitHub Pages et les deux domaines Firebase du jeu. Les règles existantes sont conservées et la modification utilise une précondition de métagénération. Les règles Storage et les jetons de téléchargement ne changent pas.
+
+
+## Chargement du palmarès et sélection des votes
+
+Le bouton de révélation du vainqueur affiche immédiatement un écran de chargement avec spinner et barre indéterminée pendant la requête serveur. La réponse du serveur contient le palmarès validé, évitant une seconde attente de snapshot. Les affiches et scènes des vainqueurs sont préparées en parallèle (quatre décodages maximum) avec une progression réelle et une limite globale de six secondes ; une image indisponible ne bloque pas les résultats. Les autres joueurs voient aussi ce chargement lorsqu’ils reçoivent le palmarès.
+
+Les boutons de vote ont un état d’enregistrement explicite, puis un fond orange, un marqueur « Vote enregistré », `aria-pressed` et une confirmation persistante avec le choix. La carte de réponse retenue est également mise en évidence. Les films du vote final disposent du même traitement. Une erreur conserve le dernier vote confirmé. Le choix confirmé est gardé dans le stockage local pour ce salon et cette identité, et réapparaît après rechargement. Les animations respectent la préférence de réduction des mouvements.

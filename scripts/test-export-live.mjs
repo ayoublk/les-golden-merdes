@@ -28,8 +28,9 @@ try{
  const sub={answers,images:[],synopsis:'Un synopsis de test.',artDirection:{secret:'internal'},revision:1,attempt:1};
  subPath=documentBase+`/rooms/${roomCode}/submissions/${player.localId}`;
  await api.patch(subPath,encode(sub).mapValue);
- const room={...game.newRoom(host.localId),code:roomCode};game.join(room,player.localId,'TEST PDF');room.phase='finished';room.memberIds=[player.localId];room.scores[player.localId]=8;room.winners=[player.localId];
+ const room={...game.newRoom(host.localId),code:roomCode};game.join(room,player.localId,'TEST PDF');room.phase='films';room.voteClosed=true;room.memberIds=[player.localId];room.scores[player.localId]=8;room.winners=[];
  await api.patch(documentBase+'/rooms/'+roomCode,encode(room).mapValue);
+ await call(player,'finish',{},true);const final=await call(host,'finish');assert.equal(final.room.phase,'finished');assert.deepEqual(final.room.winners,[player.localId]);assert.equal(final.room.scores[player.localId],8);
  for(const user of [host,player]){const report=await call(user,'exportPdf');assert.equal(report.films.length,1);assert.deepEqual(report.films[0].answers,answers);assert.equal(report.films[0].artDirection,undefined);assert.deepEqual(report.winners,[player.localId]);}
  await call(outsider,'exportPdf',{},true);
  console.log('Live PDF report: members only, finished phase only, all nine answers and winner returned; internal data excluded. No generation requested.');

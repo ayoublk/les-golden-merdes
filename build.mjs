@@ -2,7 +2,7 @@ import {copyFileSync,readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 copyFileSync('functions/core.mjs','dist/core.mjs');
 copyFileSync('functions/core.mjs','image-functions/core.mjs');
-const modules=['app.js','core.mjs','async-actions.mjs','config.js','pdf-export.mjs'];
+const modules=['app.js','core.mjs','async-actions.mjs','config.js','pdf-export.mjs','ui-feedback.mjs'];
 mkdirSync('dist/vendor',{recursive:true});
 copyFileSync('node_modules/jspdf/dist/jspdf.umd.min.js','dist/vendor/jspdf-4.2.1.umd.min.js');
 copyFileSync('node_modules/jspdf/LICENSE','dist/vendor/jspdf-LICENSE.txt');
