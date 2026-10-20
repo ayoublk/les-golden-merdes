@@ -2,9 +2,17 @@
 
 Jeu d’Halloween en français pour 2 à 20 joueurs, animé depuis une régie. L’animateur ne joue pas et ne vote pas. Interface adaptative, mode stream, démo locale et backend Firebase préparé.
 
+## Commandes de secours et retours d’action
+
+L’animateur dispose d’un panneau **Secours images** après l’envoi des films, pendant les révélations, la présentation des films et le palmarès. Il affiche l’état et le nombre d’images enregistrées pour chaque joueur. Une relance ciblée conserve les images existantes et reprend les images manquantes. Les films en échec ou bloqués depuis dix minutes peuvent être relancés en lot. Une tâche encore active peut être remplacée immédiatement après confirmation ; un appel IA déjà parti peut encore être facturé. Les tentatives manuelles ne sont plus limitées à trois ; un délai de dix secondes entre deux relances d’un même joueur protège des doubles clics.
+
+Après la neuvième question et la clôture de son vote, **Continuer sans attendre les images** permet de présenter les films même si une tâche reste bloquée. Les images qui arrivent ensuite se mettent à jour en direct, y compris au palmarès. Les relances ne modifient ni les votes ni les scores, et ne contournent pas un fournisseur sans crédits ou une IA désactivée.
+
+Les actions réseau affichent immédiatement un spinner sur le bouton et un message de traitement. Les commandes sont désactivées jusqu’à la réponse, puis réactivées aussi en cas d’erreur. Les SDK Firebase sont préchargés à l’inactivité et la connexion ainsi que la fonction callable sont réutilisées. Le serveur ne lit plus que la soumission utile à une révélation ; les changements de question ordinaires ne relisent plus les soumissions. Un vote identique n’écrit rien et un changement de vote ne réécrit plus tout le salon. Un curseur vérifié côté serveur empêche une commande depuis un écran en retard de faire avancer la partie deux fois. Les démarrages à froid de Cloud Functions peuvent encore ajouter un délai au premier appel ; aucune instance payante permanente n’a été ajoutée.
+
 ## Publication GitHub Pages
 
-Le site public de test est déployé depuis la branche `main` par `.github/workflows/pages.yml`. Chaque push exécute les dix tests, prépare `dist/` et publie le site avec GitHub Actions. Les chemins des ressources et les invitations sont relatifs pour fonctionner aussi dans le sous-dossier GitHub Pages du dépôt.
+Le site public de test est déployé depuis la branche `main` par `.github/workflows/pages.yml`. Chaque push exécute la suite de tests, prépare `dist/` et publie le site avec GitHub Actions. Les chemins des ressources et les invitations sont relatifs pour fonctionner aussi dans le sous-dossier GitHub Pages du dépôt.
 
 GitHub Pages héberge l’interface ; les salons, votes et fonctions restent sur Firebase (`emestreamhalloween`). La configuration Firebase Web est publique. La clé IA reste exclusivement dans Firebase Secret Manager et aucun secret Firebase ou OpenAI n’est nécessaire dans GitHub Actions. Le blocage des crédits API OpenAI décrit plus bas concerne toujours les images, pas le multijoueur.
 
@@ -37,7 +45,7 @@ firebase login
 firebase use --add
 npm --prefix functions ci
 node build.mjs
-node --test tests/game.test.mjs
+node --test tests/*.test.mjs
 firebase deploy --only 'functions:default,firestore:rules,storage,hosting'
 ```
 
@@ -54,7 +62,7 @@ Pour activer les images, installer les dépendances depuis le dossier `image-fun
 - Envoyer une nouvelle version déclenche une nouvelle génération, sauf si les réponses sont identiques. Les anciennes tâches ne peuvent pas remplacer les images d’une version plus récente. Les corrections peuvent donc déclencher de nouveaux appels IA.
 - L’animateur démarre les révélations une fois tous les films envoyés. Chaque clic révèle une réponse de plus. Aucune réponse à venir n’est livrée aux autres clients : les soumissions privées sont lues par les fonctions serveur.
 - Après toutes les réponses d’une question, le vote s’ouvre. Une seule voix par joueur, modifiable jusqu’à la clôture, sans auto-vote. **Une voix reçue = un point.** Les votes ne sont pas ventilés publiquement avant clôture. L’animateur peut clôturer sans tous les votes après un avertissement.
-- Les images se préparent pendant cette phase : une affiche et deux scènes. Deux tâches de films au maximum tournent en parallèle. Les générations peuvent prendre plusieurs minutes selon le nombre de joueurs et les limites du fournisseur. Les échecs sont visibles ; l’animateur peut les relancer jusqu’à trois tentatives par version. Une tâche bloquée devient relançable après vingt minutes. Un film en échec peut être présenté avec un remplacement et ses éventuelles images déjà produites.
+- Les images se préparent pendant cette phase : une affiche et deux scènes. Deux tâches de films au maximum tournent en parallèle. Les générations peuvent prendre plusieurs minutes selon le nombre de joueurs et les limites du fournisseur. Les erreurs et la progression sont visibles dans **Secours images**, qui permet la reprise des images manquantes et le déblocage manuel des tâches en cours.
 - Après la question 9, les images sont révélées film par film. Le vote final porte sur le film complet. Le ou les premiers reçoivent **cinq points chacun**, sans multiplier le bonus par les voix. Sans vote final, aucun bonus. Le score total détermine le ou les vainqueurs, affichés avec leurs films et images. Le palmarès peut être exporté en JSON.
 
 ## Architecture
@@ -70,11 +78,11 @@ L’accès animateur appartient à l’identité Firebase du navigateur créateu
 ## Vérifications
 
 ```powershell
-node --test tests/game.test.mjs
+node --test tests/*.test.mjs
 node --check dist/app.js
 node --check functions/index.mjs
 ```
 
-Dix tests couvrent les transitions, l’expiration non bloquante, le vote pour soi, les points par voix, le bonus final, les égalités, l’absence de voix et les images indisponibles ou non activées. Une partie complète a aussi été vérifiée sur le projet Firebase réel avec trois identités anonymes : corrections, neuf tours de vote, bonus final et vainqueurs ex æquo. Les lectures privées, écritures directes et commandes d’animateur non autorisées ont été rejetées. La création d’un salon depuis le site publié a été vérifiée au navigateur. `node scripts/test-live.mjs` relance le test d’intégration (réservé à la configuration sans génération IA, crée un salon de test et nettoie ses comptes anonymes). `node scripts/test-images-live.mjs` soumet un film de test au générateur déployé : trois images réelles sont demandées, avec contrôle du téléchargement et des dimensions. Ce test utilise le compte Firebase CLI local et n’accède jamais à la valeur du secret IA. Les erreurs du fournisseur sont enregistrées avec leur code et leur statut HTTP, sans clé ni corps de requête.
+Dix-huit tests couvrent les transitions, l’expiration non bloquante, le vote pour soi, les points par voix, le bonus final, les égalités, l’absence de voix et les images indisponibles ou non activées. Une partie complète a aussi été vérifiée sur le projet Firebase réel avec trois identités anonymes : corrections, neuf tours de vote, bonus final et vainqueurs ex æquo. Les lectures privées, écritures directes et commandes d’animateur non autorisées ont été rejetées. La création d’un salon depuis le site publié a été vérifiée au navigateur. `node scripts/test-live.mjs` relance le test d’intégration (réservé à la configuration sans génération IA, crée un salon de test et nettoie ses comptes anonymes). `node scripts/test-images-live.mjs` soumet un film de test au générateur déployé : trois images réelles sont demandées, avec contrôle du téléchargement et des dimensions. Ce test utilise le compte Firebase CLI local et n’accède jamais à la valeur du secret IA. Les erreurs du fournisseur sont enregistrées avec leur code et leur statut HTTP, sans clé ni corps de requête.
 
 Références : [fonctions callable Firebase](https://firebase.google.com/docs/functions/callable), [transactions Firestore](https://firebase.google.com/docs/firestore/manage-data/transactions), [authentification anonyme](https://firebase.google.com/docs/auth/web/anonymous-auth), [API de génération d’images OpenAI](https://developers.openai.com/api/reference/resources/images/methods/generate).

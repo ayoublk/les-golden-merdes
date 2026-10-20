@@ -25,11 +25,11 @@ export const generateFilm=onDocumentCreated({document:'generationJobs/{jobId}',r
    const token=randomUUID(),path=`films/${job.code}/${job.uid}/${job.revision}-${job.attempt}-${i}.png`,bucket=getStorage().bucket();
    await bucket.file(path).save(Buffer.from(output.data[0].b64_json,'base64'),{metadata:{contentType:'image/png',metadata:{firebaseStorageDownloadTokens:token}}});
    images.push(`https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`);
-   await db.runTransaction(async tx=>{const s=await tx.get(subRef);if(current(s.data()))tx.update(subRef,{images});});
+   await db.runTransaction(async tx=>{const [s,r]=await Promise.all([tx.get(subRef),tx.get(roomRef)]);if(current(s.data())){tx.update(subRef,{images});const room=r.data(),p=room.players.find(p=>p.id===job.uid);if(p){p.generationCount=images.length;p.generationAt=Date.now();}const film=room.films?.find(f=>f.id===job.uid);if(film)film.images=[...images];saveRoom(tx,roomRef,room);}});
   }
-  await db.runTransaction(async tx=>{const [s,r]=await Promise.all([tx.get(subRef),tx.get(roomRef)]);if(current(s.data())){const room=r.data(),p=room.players.find(p=>p.id===job.uid);if(p){p.generation='ready';p.generationAt=Date.now();saveRoom(tx,roomRef,room);}}tx.update(jobRef,{status:'done',finishedAt:Date.now()});});
+  await db.runTransaction(async tx=>{const [s,r]=await Promise.all([tx.get(subRef),tx.get(roomRef)]);if(current(s.data())){const room=r.data(),p=room.players.find(p=>p.id===job.uid);if(p){p.generation='ready';p.generationCount=images.length;p.generationError=null;p.generationAt=Date.now();saveRoom(tx,roomRef,room);}}tx.update(jobRef,{status:'done',finishedAt:Date.now()});});
  }catch(e){
   console.error('Film generation failed',{jobId:event.params.jobId,message:e.message});
-  await db.runTransaction(async tx=>{const [s,r]=await Promise.all([tx.get(subRef),tx.get(roomRef)]);if(current(s.data())){const room=r.data(),p=room.players.find(p=>p.id===job.uid);if(p){p.generation='error';p.generationAt=Date.now();saveRoom(tx,roomRef,room);}}tx.update(jobRef,{status:'error',errorCode:e.providerCode||'generation_failed',errorStatus:e.providerStatus||0,finishedAt:Date.now()});});
+  await db.runTransaction(async tx=>{const [s,r]=await Promise.all([tx.get(subRef),tx.get(roomRef)]);if(current(s.data())){const room=r.data(),p=room.players.find(p=>p.id===job.uid);if(p){p.generation='error';p.generationError=e.providerCode||'generation_failed';p.generationAt=Date.now();saveRoom(tx,roomRef,room);}}tx.update(jobRef,{status:'error',errorCode:e.providerCode||'generation_failed',errorStatus:e.providerStatus||0,finishedAt:Date.now()});});
  }
 });

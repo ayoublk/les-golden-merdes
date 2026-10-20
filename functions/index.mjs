@@ -6,6 +6,7 @@ import {onCall,HttpsError} from 'firebase-functions/v2/https';
 import {defineBoolean} from 'firebase-functions/params';
 import {randomBytes} from 'node:crypto';
 import * as game from './core.mjs';
+import {planRecovery} from './recovery.mjs';
 initializeApp();
 const db=getFirestore(),REGION='europe-west1';
 const imageGenerationEnabled=defineBoolean('ENABLE_IMAGE_GENERATION',{default:false});
@@ -30,24 +31,31 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   if(action==='join'){assert(uid!==room.hostId,'L’animateur ne participe pas au casting.');game.join(room,uid,data.name);saveRoom(tx,ref,room);return {ok:true};}
   const host=room.hostId===uid,player=room.players.find(p=>p.id===uid);
   assert(host||player,'Vous ne faites pas partie de ce salon.');
+  game.assertCursor(room,data.expected);
   if(action==='submit'){
    assert(player&&room.phase==='writing','Les révélations ont commencé ou vous n’êtes pas joueur.');
    const answers=game.validateAnswers(data.answers),subRef=ref.collection('submissions').doc(uid),previous=(await tx.get(subRef)).data();
    if(previous&&JSON.stringify(previous.answers)===JSON.stringify(answers)&&!(player.generation==='unavailable'&&imageGenerationEnabled.value()))return {ok:true};
    const revision=(previous?.revision||0)+1;
-   player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();
+   player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();player.generationCount=0;player.generationError=null;
    tx.set(subRef,{answers,images:[],revision,attempt:1,submittedAt:Date.now()});
    if(imageGenerationEnabled.value())tx.create(db.collection('generationJobs').doc(),{code:data.code,uid,revision,attempt:1,status:'queued'});saveRoom(tx,ref,room);return {ok:true};
   }
   if(action==='vote'){
    game.validateVote(room,uid,data.target);const key=voteKey(room),voteRef=ref.collection('votes').doc(`${key}_${uid}`),previous=await tx.get(voteRef);
-   if(!previous.exists)room.voteCount++;tx.set(voteRef,{voter:uid,target:data.target,round:key});saveRoom(tx,ref,room);return {ok:true};
+   if(previous.data()?.target===data.target)return {ok:true};
+   tx.set(voteRef,{voter:uid,target:data.target,round:key});if(!previous.exists)tx.update(ref,{voteCount:(room.voteCount||0)+1});return {ok:true};
   }
   assert(host,'Seul l’animateur peut piloter la séance.');
+  if(action==='retry'&&data.id!==undefined)assert(typeof data.id==='string'&&room.players.some(p=>p.id===data.id),'Joueur inconnu.');
   let submissions={};
-  if(['revealNext','nextQuestion','retry'].includes(action)){
-   const docs=await Promise.all(room.players.map(p=>tx.get(ref.collection('submissions').doc(p.id))));
-   submissions=Object.fromEntries(docs.map((s,i)=>[room.players[i].id,s.data()]));
+  let ids=[];
+  if(action==='revealNext'&&room.players[room.revealed.length])ids=[room.players[room.revealed.length].id];
+  if(action==='nextQuestion'&&room.question===8)ids=room.players.map(p=>p.id);
+  if(action==='retry')ids=data.id?[data.id]:room.players.filter(p=>p.submitted&&p.generation!=='ready').map(p=>p.id);
+  if(ids.length){
+   const docs=await tx.getAll(...ids.map(id=>ref.collection('submissions').doc(id)));
+   submissions=Object.fromEntries(docs.map((s,i)=>[ids[i],s.data()]));
   }
   switch(action){
    case 'remove':assert(room.phase==='lobby','Le casting est fermé.');room.players=room.players.filter(p=>p.id!==data.id);break;
@@ -56,14 +64,14 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
    case 'revealNext':game.revealNext(room,submissions);break;
    case 'openVote':game.openVote(room);break;
    case 'closeVote':{const votes=await tx.get(ref.collection('votes').where('round','==',voteKey(room)));game.closeVote(room,Object.fromEntries(votes.docs.map(d=>[d.data().voter,d.data().target])));break;}
-   case 'nextQuestion':game.nextQuestion(room,submissions);break;
+   case 'nextQuestion':game.nextQuestion(room,submissions,{skipImages:data.skipImages===true});break;
    case 'nextFilm':assert(room.phase==='films'&&!room.voteOpen&&!room.voteClosed&&room.filmIndex<room.films.length-1,'Film suivant indisponible.');room.filmIndex++;break;
    case 'finish':game.finish(room);break;
    case 'retry':{
     assert(imageGenerationEnabled.value(),'La génération d’images n’est pas encore activée sur le serveur.');
-    assert(['writing','reveal'].includes(room.phase),'Les films ont déjà été dévoilés.');let count=0;
-    for(const p of room.players){const sub=submissions[p.id];if(!sub)continue;const stalled=['queued','generating'].includes(p.generation)&&Date.now()-(p.generationAt||0)>20*60000;if(!['error','unavailable'].includes(p.generation)&&!stalled)continue;if(sub.attempt>=3)continue;const attempt=sub.attempt+1;p.generation='queued';p.generationAt=Date.now();tx.update(ref.collection('submissions').doc(p.id),{attempt});tx.create(db.collection('generationJobs').doc(),{code:data.code,uid:p.id,revision:sub.revision,attempt,status:'queued'});count++;}
-    assert(count>0,'Aucun film relançable (trois tentatives maximum par version, ou attendez 20 minutes pour une génération bloquée).');break;
+    const plans=planRecovery(room,submissions,{id:data.id,force:data.force===true});
+    for(const plan of plans){const p=room.players.find(p=>p.id===plan.id);p.generation='queued';p.generationAt=Date.now();p.generationCount=plan.images.length;p.generationError=null;tx.update(ref.collection('submissions').doc(plan.id),{attempt:plan.attempt,lastRetryAt:plan.lastRetryAt});tx.create(db.collection('generationJobs').doc(),{code:data.code,uid:plan.id,revision:plan.revision,attempt:plan.attempt,status:'queued'});}
+    break;
    }
    default:throw new HttpsError('invalid-argument','Commande inconnue.');
   }
