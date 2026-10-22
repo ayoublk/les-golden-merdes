@@ -32,8 +32,8 @@ function fixture(n=1){const db=memoryDb(),room=game.newRoom('host');room.phase='
 const provider={brief:async()=>({brief}),image:async(work,step)=>({image:`https://example.test/${work.job.uid}/${step}.png`})};
 test('nine simultaneous films: all stages complete, duplicate deliveries never duplicate images or synopsis calls',async()=>{const f=fixture(9);let calls=0,active=0,peak=0;const counted={brief:async w=>{calls++;active++;peak=Math.max(peak,active);await new Promise(resolve=>setImmediate(resolve));active--;return provider.brief(w);},image:async(w,s)=>{calls++;return provider.image(w,s);}};const enqueue=async(jobId,step)=>{f.queue.push({jobId,step});};while(f.queue.length){const batch=f.queue.splice(0);await Promise.all(batch.flatMap(item=>[item,item]).map(item=>runStep({...item,store:f.store,provider:counted,enqueue})));}assert.equal(calls,45);assert.ok(peak>1);for(let i=0;i<9;i++){const sub=f.db.docs.get(`rooms/TEST00/submissions/p${i}`);assert.equal(sub.images.length,4);assert.equal(sub.synopsis,synopsis);assert.equal(f.db.docs.get(`generationJobs/j${i}`).status,'done');}assert.ok(f.db.docs.get('rooms/TEST00').players.every(p=>p.generation==='ready'));});
 test('transient failure retries only the failed stage and respects Retry-After',async()=>{const f=fixture();await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});let calls=0;const flaky={...provider,image:async()=>{calls++;if(calls===1)throw Object.assign(Error('limit'),{providerCode:'rate_limit_exceeded',providerStatus:429,retryAfter:90});return {image:'poster.png'};}};let queued;await runStep({jobId:'j0',step:'poster',store:f.store,provider:flaky,enqueue:async(...args)=>{queued=args;},now:()=>100000,random:()=>0});assert.equal(f.db.docs.get('generationJobs/j0').status,'retrying');assert.equal(queued[2],90);await runStep({jobId:'j0',step:'poster',store:f.store,provider:flaky,enqueue:async()=>{},now:()=>191000});assert.equal(calls,2);assert.equal(f.db.docs.get('rooms/TEST00/submissions/p0').synopsis,synopsis);assert.deepEqual(f.db.docs.get('rooms/TEST00/submissions/p0').images,['poster.png']);});
-test('moderation, missing credits and access errors are terminal, never retried automatically',async()=>{for(const code of ['moderation_blocked','insufficient_quota','credit_balance_exhausted','model_not_found','permission_denied','refusal']){const f=fixture();let queued=0;await runStep({jobId:'j0',step:'brief',store:f.store,provider:{brief:async()=>{throw Object.assign(Error('refused'),{providerCode:code,providerStatus:code==='insufficient_quota'?429:400});}},enqueue:async()=>{queued++;}});assert.equal(queued,0);assert.equal(f.db.docs.get('generationJobs/j0').status,'error');assert.equal(f.db.docs.get('rooms/TEST00').players[0].generationError,code);}});
-test('automatic retries have a strict per-stage limit',async()=>{const f=fixture();let queued=0;const failing={brief:async()=>{throw Object.assign(Error('down'),{providerStatus:503,providerCode:'server_error'});}};for(let i=0;i<MAX_STEP_ATTEMPTS;i++)await runStep({jobId:'j0',step:'brief',store:f.store,provider:failing,enqueue:async()=>{queued++;},now:()=>i*1000000,random:()=>0});assert.equal(queued,MAX_STEP_ATTEMPTS-1);assert.equal(f.db.docs.get('generationJobs/j0').status,'error');});
+test('missing credits and access errors are terminal, never retried automatically',async()=>{for(const code of ['insufficient_quota','credit_balance_exhausted','model_not_found','permission_denied']){const f=fixture();let queued=0;await runStep({jobId:'j0',step:'brief',store:f.store,provider:{brief:async()=>{throw Object.assign(Error('refused'),{providerCode:code,providerStatus:code==='insufficient_quota'?429:400});}},enqueue:async()=>{queued++;}});assert.equal(queued,0);assert.equal(f.db.docs.get('generationJobs/j0').status,'error');assert.equal(f.db.docs.get('rooms/TEST00').players[0].generationError,code);}});
+test('automatic retries have a strict per-stage limit',async()=>{const f=fixture();let queued=0;const failing={brief:async()=>{throw Object.assign(Error('down'),{providerStatus:503,providerCode:'server_error'});}};for(let i=0;i<MAX_STEP_ATTEMPTS;i++)await runStep({jobId:'j0',step:'brief',store:f.store,provider:failing,enqueue:async()=>{queued++;},now:()=>i*1000000,random:()=>0});assert.equal(queued,MAX_STEP_ATTEMPTS);assert.equal(f.db.docs.get('generationJobs/j0').step,'poster');assert.ok(f.db.docs.get('rooms/TEST00/submissions/p0').briefFallback);});
 test('expired lease is recovered and live lease protects against duplicate execution',async()=>{const f=fixture();assert.ok(await f.store.claim('j0','brief',1000));assert.equal(await f.store.claim('j0','brief',2000),null);assert.equal((await f.store.pending(2000)).length,0);assert.equal((await f.store.pending(1001+LEASE_MS)).length,1);assert.ok(await f.store.claim('j0','brief',1001+LEASE_MS));});
 test('repair does not flood a healthy backlog with duplicate tasks and resumes a lost dispatch',async()=>{const f=fixture();const job=f.db.docs.get('generationJobs/j0');job.lastEnqueuedAt=1000;assert.equal((await f.store.pending(2000)).length,0);assert.equal((await f.store.pending(1001+15*60*1000)).length,1);job.lastEnqueuedAt=0;assert.equal((await f.store.pending(2000)).length,1);});
 test('one rate limit pauses other films until its Retry-After has elapsed',async()=>{const f=fixture(2);f.db.docs.set('generationControl/provider',{cooldownUntil:90000});const deferred=await f.store.claim('j1','brief',30000);assert.deepEqual(deferred,{defer:60});assert.equal(f.db.docs.get('generationJobs/j1').stepAttempts,undefined);assert.ok((await f.store.claim('j1','brief',90001)).owner);});
@@ -101,3 +101,58 @@ test('poster and brief receive the actual film author, separately from the direc
 test('provider parses structured synopsis and submits an image reference using the JSON edit API',async()=>{const requests=[];const bytes=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(bytes);const p=createProvider({apiKey:'test',fetchImpl:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return new Response(JSON.stringify(url.endsWith('/responses')?{output:[{content:[{type:'output_text',text:JSON.stringify(brief)}]}]}:{data:[{b64_json:bytes.toString('base64')}]}),{status:200});},artifacts:{read:async()=>null,save:async(_w,_s,data)=>{assert.deepEqual(data,bytes);return 'scene.png';}}});assert.deepEqual(await p.brief({sub:{answers}}),{brief});assert.deepEqual(await p.image({sub:{answers,artDirection:brief,images:['https://example.test/poster.png']}},'scene2'),{image:'scene.png'});assert.ok(requests[1].url.endsWith('/images/edits'));assert.equal(requests[1].body.images[0].image_url,'https://example.test/poster.png');assert.equal(requests[0].body.reasoning.effort,'none');});
 test('new API error metadata is parsed, authorization is server-only and text refusals are recognized',async()=>{const p=createProvider({apiKey:'server-secret',fetchImpl:async(url,opts)=>{assert.equal(opts.headers.Authorization,'Bearer server-secret');assert.ok(url.endsWith('/responses'));return new Response(JSON.stringify({error:{code:'rate_limit_exceeded'}}),{status:429,headers:{'retry-after':'60','x-request-id':'req-test'}});}});await assert.rejects(p.brief({sub:{answers}}),e=>e.providerStatus===429&&e.retryAfter===60&&e.requestId==='req-test');const refusing=createProvider({apiKey:'test',fetchImpl:async()=>new Response(JSON.stringify({output:[{content:[{type:'refusal'}]}]}),{status:200})});await assert.rejects(refusing.brief({sub:{answers}}),e=>e.providerCode==='refusal');});
 test('retry policy distinguishes temporary outages and enforces backoff limits',()=>{assert.equal(classifyError({name:'TimeoutError'}).retryable,true);assert.equal(classifyError({providerStatus:401}).retryable,false);assert.equal(retryDelay(1,0,()=>0),20);assert.equal(retryDelay(4,120,()=>0),160);assert.equal(retryDelay(8,0,()=>0),900);assert.equal(retryDelay(8,10000,()=>0),10000);assert.equal(eligible({status:'queued',revision:1,attempt:1},{revision:1,attempt:2},{phase:'writing'},'brief',0),'superseded');});
+
+
+test('refused scene switches durably to a safe plan, then continues without changing the original answers',async()=>{
+ const f=fixture(),enqueue=async(jobId,step)=>f.queue.push({jobId,step});f.queue=[];
+ await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});
+ await runStep({jobId:'j0',step:'poster',store:f.store,provider,enqueue:async()=>{}});
+ const refused=Object.assign(Error('refused'),{providerCode:'moderation_blocked',providerStatus:400});
+ let originals=0,plans=0,alternatives=0;
+ const safe={...provider,image:async(w,step)=>{
+  if(step!=='scene1')return provider.image(w,step);
+  if(!w.sub.safetyFallback?.[step]){originals++;throw refused;}
+  if(!w.sub.safePlans?.[step]){plans++;return {safetyPlan:brief};}
+  alternatives++;return {image:'safe-scene.png'};
+ }};
+ await runStep({jobId:'j0',step:'scene1',store:f.store,provider:safe,enqueue,now:()=>1000000});
+ assert.equal(f.db.docs.get('rooms/TEST00/submissions/p0').safetyFallback.scene1,true);
+ while(f.queue.length){const task=f.queue.shift();await runStep({...task,store:f.store,provider:safe,enqueue,now:()=>2000000});}
+ const sub=f.db.docs.get('rooms/TEST00/submissions/p0');assert.deepEqual(sub.answers,answers);
+ assert.equal(sub.images[1],'safe-scene.png');assert.equal(sub.images.length,4);
+ assert.deepEqual([originals,plans,alternatives],[1,1,1]);assert.equal(f.db.docs.get('rooms/TEST00').players[0].generation,'ready');
+});
+
+test('a second refusal skips only that scene; manual recovery fills the hole and preserves later images',async()=>{
+ const f=fixture(),enqueue=async(jobId,step)=>f.queue.push({jobId,step});f.queue=[];
+ await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});
+ const refusing={...provider,image:async(w,step)=>{if(step==='scene1')throw Object.assign(Error('refused'),{providerCode:'refusal',providerStatus:400});return provider.image(w,step);}};
+ f.queue.push({jobId:'j0',step:'poster'});let clock=2000000;
+ while(f.queue.length){const task=f.queue.shift();clock+=1000000;await runStep({...task,store:f.store,provider:refusing,enqueue,now:()=>clock});}
+ const sub=f.db.docs.get('rooms/TEST00/submissions/p0'),saved=[...sub.images];
+ assert.equal(saved[1],null);assert.ok(saved[2]);assert.ok(saved[3]);
+ assert.equal(f.db.docs.get('rooms/TEST00').players[0].generation,'error');
+ assert.equal(nextStep(sub),null);sub.failedSteps={};assert.equal(nextStep(sub),'scene1');
+ // Simulate the new attempt created by the admin recovery command.
+ sub.attempt=2;f.db.docs.set('generationJobs/j1',{code:'TEST00',uid:'p0',revision:1,attempt:2,status:'queued',pipelineVersion:2});
+ const paid=[];await runStep({jobId:'j1',step:'scene1',store:f.store,provider:{image:async(_w,step)=>{paid.push(step);return {image:'repaired.png'};}},enqueue:async()=>assert.fail('other images already exist')});
+ const final=f.db.docs.get('rooms/TEST00/submissions/p0');assert.deepEqual(paid,['scene1']);assert.equal(final.images[2],saved[2]);assert.equal(final.images[3],saved[3]);assert.equal(final.images[1],'repaired.png');
+});
+
+test('refused brief followed by refused safe brief uses a local safe bible; original unsafe facts never enter image requests',async()=>{
+ const f=fixture();let calls=0;const refusing={brief:async()=>{calls++;throw Object.assign(Error('refused'),{providerCode:'refusal',providerStatus:400});}};
+ await runStep({jobId:'j0',step:'brief',store:f.store,provider:refusing,enqueue:async()=>{},now:()=>1000000});
+ await runStep({jobId:'j0',step:'brief',store:f.store,provider:refusing,enqueue:async()=>{},now:()=>2000000});
+ const sub=f.db.docs.get('rooms/TEST00/submissions/p0');assert.equal(calls,2);assert.equal(sub.safeFilm,true);assert.equal(nextStep(sub),'poster');assert.ok(validateBrief(sub.artDirection));
+ let sent;const bytes=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(bytes);
+ const p=createProvider({apiKey:'test',fetchImpl:async(_url,opts)=>{sent=JSON.parse(opts.body);return new Response(JSON.stringify({data:[{b64_json:bytes.toString('base64')}]}));},artifacts:{read:async()=>null,save:async()=> 'safe.png'}});
+ await p.image({sub},'poster');for(const answer of answers)assert.ok(!sent.prompt.includes(answer));assert.equal(sent.moderation,'auto');
+});
+
+test('provider persists a separate safe plan before making a replacement image call, without resending the refused scene',async()=>{
+ const requests=[],bytes=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(bytes);
+ const p=createProvider({apiKey:'test',fetchImpl:async(url,opts)=>{requests.push({url,body:JSON.parse(opts.body)});return new Response(JSON.stringify(url.endsWith('/responses')?{output:[{content:[{type:'output_text',text:JSON.stringify(brief)}]}]}:{data:[{b64_json:bytes.toString('base64')}]}));},artifacts:{read:async()=>null,save:async()=> 'safe.png'}});
+ const sub={answers:[...answers],imagePlanVersion:3,images:['poster.png'],artDirection:brief,safetyFallback:{scene2:true}};sub.answers[6]='REFUSED_SCENE_SENTINEL';
+ const plan=await p.image({sub},'scene2');assert.ok(plan.safetyPlan);assert.equal(requests.length,1);assert.ok(!requests[0].body.input.includes('REFUSED_SCENE_SENTINEL'));
+ sub.safePlans={scene2:plan.safetyPlan};await p.image({sub},'scene2');assert.ok(requests[1].url.endsWith('/images/generations'));assert.equal(requests[1].body.images,undefined);assert.ok(!requests[1].body.prompt.includes('REFUSED_SCENE_SENTINEL'));
+});

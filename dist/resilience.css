@@ -11,3 +11,4 @@
 .scene-frame{margin:0;min-width:0}.scene-frame .scene{width:100%}.scene-frame figcaption{padding:10px 0 16px;font-size:12px;color:var(--muted);text-align:left}.winner .scene-frame figcaption{text-align:center}
 
 .scene-frame:last-child:nth-child(3){grid-column:1 / -1}dialog .scenes{grid-template-columns:1fr}
+.connection-tools{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 18px;padding:12px 0;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.connection-tools button{font-size:12px}

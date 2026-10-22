@@ -1,11 +1,11 @@
+import {isRefusal,isAccountError,imageSteps,emergencyBrief} from './safety.mjs';
 // Pure queue policy, shared by the worker and the concurrency/recovery tests.
 export const MAX_STEP_ATTEMPTS=5;
 export const LEASE_MS=10*60*1000;
 export const TERMINAL=new Set(['done','error','cancelled','superseded']);
 export function nextStep(sub){
  if(!sub.synopsis||!sub.artDirection)return 'brief';
- const count=(sub.images||[]).length;
- return (sub.imagePlanVersion===3?['poster','scene1','scene2','scene3']:['poster','scene1','scene2'])[count]||null;
+ return imageSteps(sub).find((step,index)=>!sub.images?.[index]&&!sub.failedSteps?.[step])||null;
 }
 export function eligible(job,sub,room,step,now){
  if(!job||TERMINAL.has(job.status))return 'skip';
@@ -29,10 +29,21 @@ export async function runStep({jobId,step,store,provider,enqueue,now=Date.now,ra
  let result;
  try{result=step==='brief'?await provider.brief(work):await provider.image(work,step);}
  catch(error){
-  const info=classifyError(error),retry=info.retryable&&work.stepAttempts<MAX_STEP_ATTEMPTS;
+  const info=classifyError(error);
+  const alternative=isRefusal(error)&&!work.sub.safetyFallback?.[step]&&!work.sub.safeFilm;
+  const retry=alternative||info.retryable&&work.stepAttempts<MAX_STEP_ATTEMPTS;
+  if(alternative)info.safetyFallback=true;
+  if(!retry&&step==='brief'&&!isAccountError(error)){
+   // A local synopsis/bible removes a text outage as a dependency of the image queue.
+   const next=await store.complete(work,{brief:emergencyBrief(),safeFilm:!!work.sub.safetyFallback?.brief,briefFallback:true},now());
+   if(next)await enqueue(jobId,next,0);
+   return;
+  }
+  info.skipStep=!retry&&step!=='brief'&&!isAccountError(error);
   const delay=retryDelay(work.stepAttempts,error.retryAfter,random);
   const saved=await store.fail(work,info,retry,now()+delay*1000);
-  if(saved&&retry)await enqueue(jobId,step,delay);
+  if(typeof saved==='string')await enqueue(jobId,saved,0);
+  else if(saved&&retry)await enqueue(jobId,step,delay);
   return;
  }
  const next=await store.complete(work,result,now());

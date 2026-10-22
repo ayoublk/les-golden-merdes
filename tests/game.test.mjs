@@ -49,3 +49,13 @@ test('aucune voix : aucun bonus final et tous les scores à zéro ex æquo',()=>
 test('attente des images, échec toléré et conservation des images disponibles',()=>{const r=setup(),s=ready(r);g.beginReveal(r);r.question=8;r.players.forEach(()=>g.revealNext(r,s));g.openVote(r);g.closeVote(r,{});r.players[0].generation='generating';assert.throws(()=>g.nextQuestion(r,s));assert.equal(r.phase,'reveal');r.players[0].generation='error';g.nextQuestion(r,s);assert.equal(r.phase,'films');assert.equal(r.films[0].images.length,3);});
 test('pas de démarrage sans joueurs ni révélation avec un film manquant',()=>{assert.throws(()=>g.start(g.newRoom('h')));const r=setup();g.start(r);assert.throws(()=>g.beginReveal(r));});
 test('IA non activée : la partie peut atteindre les films sans attente infinie',()=>{const r=setup(),s=ready(r);g.beginReveal(r);r.question=8;r.players.forEach(()=>g.revealNext(r,s));g.openVote(r);g.closeVote(r,{});r.players.forEach(p=>{p.generation='unavailable';});g.nextQuestion(r,s);assert.equal(r.phase,'films');});
+
+
+test('blank answers remain blank for scoring and disclosure, but never prevent a complete game',()=>{
+ const r=setup(),s=ready(r),partial=[...answers];partial[0]='';partial[3]='';partial[5]='';partial[8]='';
+ assert.deepEqual(g.validateAnswers(partial),partial);assert.deepEqual(g.validateAnswers(Array(9).fill('  ')),Array(9).fill(''));
+ s.a={answers:partial,images:[]};delete s.b;
+ g.beginReveal(r);
+ for(let q=0;q<9;q++){r.players.forEach(()=>g.revealNext(r,s));if(q===0)assert.equal(r.revealed[0].answer,'Non renseigné');if(q!==3){g.openVote(r);g.closeVote(r,{});}g.nextQuestion(r,s);}
+ assert.equal(r.films[0].title,'Film sans titre');assert.equal(r.films[1].title,'Film sans titre');r.filmIndex=2;g.openVote(r);g.closeVote(r,{});g.finish(r);assert.equal(r.phase,'finished');
+});

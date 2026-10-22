@@ -1,6 +1,6 @@
 # Récupération du backend — 23 octobre 2026
 
-Le backend fonctionne avec le code du commit `576c1e2`, y compris le départ avec les questionnaires reçus et le mode spectateur des absents.
+La récupération initiale utilisait le code du commit `576c1e2`. Une publication ultérieure du 23 octobre ajoute les protections pour le direct (réponses vides, variantes après refus, réparation des images manquantes et resynchronisation). Le script de restauration cible désormais cette dernière version, validée sur une partie réelle complète et sur la chaîne de génération sans appel IA payant.
 
 ## Diagnostic constaté
 
@@ -48,3 +48,10 @@ Les trois fonctions de génération partagent le même paquet source. Leur image
 - `node scripts/test-skip-missing-live.mjs` : commande réservée à l’animateur, départ forcé sans tous les questionnaires, spectateurs autorisés à lire le salon, envoi tardif et votes des absents refusés, votes des participants préservés : réussis.
 - `node scripts/test-queue-live.mjs` : Firestore → Cloud Tasks → worker privé → garde d’arrêt : réussi.
 - Aucun appel IA payant lors de ces vérifications. Les comptes et documents temporaires des scripts ont été nettoyés.
+
+
+## Publication des protections pour le direct
+
+`node scripts/deploy-stable-backend.mjs --apply` conserve les images complètes du runtime validé et remplace uniquement les modules applicatifs, sans nouvelle installation de dépendances. Les nouvelles images ont été construites avec Cloud Build `0a22c9ae-9629-4cfc-a608-b626c2de1c15` ; les quatre services ont atteint `Ready`. Une partie complète (`scripts/test-failsafe-live.mjs`) et le contrôle de file (`scripts/test-queue-live.mjs`) ont réussi sans génération IA payante. Les digests de cette version sont enregistrés dans `scripts/restore-stable-backend.mjs` : ce secours préserve maintenant les nouvelles fonctions.
+
+Le mode `--resume=artifacts/releases/<identifiant>.json --apply` du script de publication reprend la surveillance d'une construction déjà demandée. Le fichier est local et ignoré par Git. Ne pas relancer une construction pour une simple interruption de la surveillance.

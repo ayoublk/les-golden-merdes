@@ -3,9 +3,8 @@
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 const project='emestreamhalloween',region='europe-west1';
-const registry=`${region}-docker.pkg.dev/${project}/gcf-artifacts/`;
-const game=registry+'emestreamhalloween__europe--west1__game_action@sha256:6bb7974cf20acb08c52c0f794be5701e59677b9cb58769952f6dbe47b61b4a10';
-const worker=registry+'emestreamhalloween__europe--west1__process_film_step@sha256:705fb74e97e2cc426788b3b1393a529d0480c959f1138264cefa136869c6b47d';
+const game="europe-west1-docker.pkg.dev/emestreamhalloween/gcf-artifacts/golden-merdes-game@sha256:88268cf52040c06c068a8eea9319445a0ce664f6fe35348278195566eba588fc";
+const worker="europe-west1-docker.pkg.dev/emestreamhalloween/gcf-artifacts/golden-merdes-worker@sha256:09205c2b992d28e63f24134be642345fe90bcea3743630c29b715187ea3901a1";
 const services=[['gameaction','gameAction',game,'http'],['processfilmstep','processFilmStep',worker,'http'],['generatefilm','generateFilm',worker,'cloudevent'],['recoverfilmqueue','recoverFilmQueue',worker,'http']];
 const apply=process.argv.includes('--apply');
 if(process.argv.slice(2).some(arg=>arg!=='--apply'))throw Error('Usage: node scripts/restore-stable-backend.mjs [--apply]');
@@ -14,10 +13,10 @@ const require=createRequire(import.meta.url),root=join(process.env.APPDATA,'npm/
 const account=require(join(root,'auth.js')).getGlobalDefaultAccount();
 await require(join(root,'requireAuth.js')).requireAuth({project,...account,nonInteractive:true});
 const {Client}=require(join(root,'apiv2.js')),api=new Client({urlPrefix:'https://run.googleapis.com',apiVersion:'v2'});
-const opts={headers:{'x-goog-user-project':project}},operations=[];
-console.log(`Validated release: 576c1e2, Google Node 22.23.2, project ${project}. ${apply?'RESTORE MODE':'READ ONLY'}`);
+const opts=()=>({headers:{'x-goog-user-project':project}}),operations=[];
+console.log(`Validated release: 2026-10-23 failsafe, Google Node 22.23.2, project ${project}. ${apply?'RESTORE MODE':'READ ONLY'}`);
 for(const [service,target,image,signature] of services){
- const name=`projects/${project}/locations/${region}/services/${service}`,current=(await api.get('/'+name,opts)).body;
+ const name=`projects/${project}/locations/${region}/services/${service}`,current=(await api.get('/'+name,opts())).body;
  if(current.template?.containers?.length!==1||current.template.containers[0].env?.find(e=>e.name==='FUNCTION_TARGET')?.value!==target)throw Error('Unexpected service configuration: '+service);
  const container=current.template.containers[0];
  const stable=container.image===image&&!container.baseImageUri&&container.env?.find(e=>e.name==='FUNCTION_SIGNATURE_TYPE')?.value===signature&&current.traffic?.length===1&&current.traffic[0].type==='TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST'&&current.traffic[0].percent===100;
@@ -25,13 +24,13 @@ for(const [service,target,image,signature] of services){
  if(!apply||(stable&&current.terminalCondition?.state==='CONDITION_SUCCEEDED'))continue;
  const template={...current.template,containers:[{...container,image,baseImageUri:'',env:[...(container.env||[]).filter(e=>e.name!=='FUNCTION_SIGNATURE_TYPE'),{name:'FUNCTION_SIGNATURE_TYPE',value:signature}]}]};
  delete template.revision;
- const result=await api.patch('/'+name,{name,etag:current.etag,template,traffic:[{type:'TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST',percent:100}]},{...opts,queryParams:{updateMask:'template,traffic'}});
+ const result=await api.patch('/'+name,{name,etag:current.etag,template,traffic:[{type:'TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST',percent:100}]},{...opts(),queryParams:{updateMask:'template,traffic'}});
  operations.push({service,name:result.body.name});console.log(`${service}: recovery requested`);
 }
 for(const op of operations){
  let done=false;
  for(let i=0;i<60;i++){
-  const result=(await api.get('/'+op.name,opts)).body;
+  const result=(await api.get('/'+op.name,opts())).body;
   if(result.error)throw Error(`${op.service}: ${result.error.message}`);
   if(result.done){if(result.response?.terminalCondition?.state!=='CONDITION_SUCCEEDED')throw Error('Service not ready: '+op.service);console.log(`${op.service}: READY`);done=true;break;}
   if(i%3===0)console.log(`${op.service}: waiting for startup`);

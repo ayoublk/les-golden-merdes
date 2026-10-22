@@ -31,6 +31,7 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   if(action==='join'){assert(uid!==room.hostId,'L’animateur ne participe pas au casting.');game.join(room,uid,data.name);saveRoom(tx,ref,room);return {ok:true};}
   const host=room.hostId===uid,player=room.players.find(p=>p.id===uid);
   assert(host||player||room.spectators?.some(p=>p.id===uid),'Vous ne faites pas partie de ce salon.');
+  if(action==='resume'){const votes=await tx.get(ref.collection('votes').where('voter','==',uid));return {room,selected:Object.fromEntries(votes.docs.map(d=>[d.data().round,d.data().target]))};}
   if(action==='exportPdf'){
    assert(room.phase==='finished','Le récapitulatif est disponible après le palmarès.');
    const docs=await tx.getAll(...room.players.map(p=>ref.collection('submissions').doc(p.id)));
@@ -77,7 +78,7 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
    case 'retry':{
     assert(imageGenerationEnabled.value(),'La génération d’images n’est pas encore activée sur le serveur.');
     const plans=planRecovery(room,submissions,{id:data.id,force:data.force===true});
-    for(const plan of plans){const p=room.players.find(p=>p.id===plan.id);p.generation='queued';p.generationAt=Date.now();p.generationCount=plan.images.length;p.generationError=null;p.generationRetryAt=null;tx.update(ref.collection('submissions').doc(plan.id),{attempt:plan.attempt,lastRetryAt:plan.lastRetryAt});tx.create(db.collection('generationJobs').doc(),{code:data.code,uid:plan.id,revision:plan.revision,attempt:plan.attempt,status:'queued',pipelineVersion:2,createdAt:Date.now()});}
+    for(const plan of plans){const p=room.players.find(p=>p.id===plan.id);p.generation='queued';p.generationAt=Date.now();p.generationCount=plan.images.filter(Boolean).length;p.generationError=null;p.generationRetryAt=null;tx.update(ref.collection('submissions').doc(plan.id),{attempt:plan.attempt,lastRetryAt:plan.lastRetryAt,failedSteps:{}});tx.create(db.collection('generationJobs').doc(),{code:data.code,uid:plan.id,revision:plan.revision,attempt:plan.attempt,status:'queued',pipelineVersion:2,createdAt:Date.now()});}
     break;
    }
    default:throw new HttpsError('invalid-argument','Commande inconnue.');
