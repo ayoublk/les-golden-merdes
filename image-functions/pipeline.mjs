@@ -5,7 +5,7 @@ export const TERMINAL=new Set(['done','error','cancelled','superseded']);
 export function nextStep(sub){
  if(!sub.synopsis||!sub.artDirection)return 'brief';
  const count=(sub.images||[]).length;
- return ['poster','scene1','scene2'][count]||null;
+ return (sub.imagePlanVersion===3?['poster','scene1','scene2','scene3']:['poster','scene1','scene2'])[count]||null;
 }
 export function eligible(job,sub,room,step,now){
  if(!job||TERMINAL.has(job.status))return 'skip';

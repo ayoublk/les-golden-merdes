@@ -19,7 +19,7 @@ async function enqueue(jobId,step,delay=0){
  const ref=db.doc(`generationJobs/${jobId}`);
  await db.runTransaction(async tx=>{const job=(await tx.get(ref)).data();if(job&&!TERMINAL.has(job.status)&&(!job.step||job.step===step))tx.update(ref,{step,lastEnqueuedAt:Date.now()+Math.ceil(delay)*1000});});
 }
-const imageIndex={poster:0,scene1:1,scene2:2};
+const imageIndex={poster:0,scene1:1,scene2:2,scene3:3};
 function fileFor(work,step){return getStorage().bucket().file(`films/${work.job.code}/${work.job.uid}/${work.job.revision}-${work.job.attempt}-${imageIndex[step]}.png`);}
 function imageUrl(file,token){return `https://firebasestorage.googleapis.com/v0/b/${file.bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;}
 const artifacts={
@@ -36,7 +36,7 @@ export const processFilmStep=onTaskDispatched({region:REGION,invoker:[runtimeAcc
  rateLimits:{maxConcurrentDispatches:concurrency,maxDispatchesPerSecond:dispatchRate},
  retryConfig:{maxAttempts:8,minBackoffSeconds:30,maxBackoffSeconds:300,maxDoublings:4,maxRetrySeconds:7200}},async request=>{
  const {jobId,step}=request.data||{};
- if(typeof jobId!=='string'||!/^[a-zA-Z0-9_-]{1,150}$/.test(jobId)||!['brief','poster','scene1','scene2'].includes(step))return;
+ if(typeof jobId!=='string'||!/^[a-zA-Z0-9_-]{1,150}$/.test(jobId)||!['brief','poster','scene1','scene2','scene3'].includes(step))return;
  const provider=createProvider({apiKey:process.env.OPENAI_API_KEY,model:process.env.IMAGE_MODEL||IMAGE_MODEL,textModel:process.env.TEXT_MODEL||TEXT_MODEL,posterQuality:process.env.POSTER_QUALITY||'high',sceneQuality:process.env.SCENE_QUALITY||'high',artifacts});
  await runStep({jobId,step,store,provider,enqueue});
 });

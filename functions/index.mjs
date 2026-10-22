@@ -44,8 +44,8 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
    const answers=game.validateAnswers(data.answers),subRef=ref.collection('submissions').doc(uid),previous=(await tx.get(subRef)).data();
    if(previous&&JSON.stringify(previous.answers)===JSON.stringify(answers)&&!(player.generation==='unavailable'&&imageGenerationEnabled.value()))return {ok:true};
    const revision=(previous?.revision||0)+1;
-   player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();player.generationCount=0;player.generationError=null;player.generationStage='brief';player.synopsisReady=false;
-   tx.set(subRef,{answers,images:[],synopsis:'',artDirection:null,revision,attempt:1,submittedAt:Date.now()});
+   player.submitted=true;player.generation=imageGenerationEnabled.value()?'queued':'unavailable';player.generationAt=Date.now();player.imagePlanVersion=3;player.generationCount=0;player.generationError=null;player.generationStage='brief';player.synopsisReady=false;
+   tx.set(subRef,{imagePlanVersion:3,answers,images:[],synopsis:'',artDirection:null,revision,attempt:1,submittedAt:Date.now()});
    if(imageGenerationEnabled.value())tx.create(db.collection('generationJobs').doc(),{code:data.code,uid,revision,attempt:1,status:'queued',pipelineVersion:2,createdAt:Date.now()});saveRoom(tx,ref,room);return {ok:true};
   }
   if(action==='vote'){

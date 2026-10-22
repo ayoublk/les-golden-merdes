@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {eligible,nextStep,LEASE_MS,MAX_STEP_ATTEMPTS} from './pipeline.mjs';
 function saveRoom(tx,ref,room){room.memberIds=room.players.map(p=>p.id);tx.set(ref,room);}
-function updateFilm(room,sub){const film=room.films?.find(f=>f.id===sub.uid);if(film){film.images=[...(sub.images||[])];film.synopsis=sub.synopsis||'';film.synopsisStatus=sub.synopsis?'ready':'error';}}
+function updateFilm(room,sub){const film=room.films?.find(f=>f.id===sub.uid);if(film){film.imagePlanVersion=sub.imagePlanVersion||2;film.images=[...(sub.images||[])];film.synopsis=sub.synopsis||'';film.synopsisStatus=sub.synopsis?'ready':'error';}}
 export function createStore(db){
  const controlRef=db.doc('generationControl/provider');
  const refs=job=>({roomRef:db.doc(`rooms/${job.code}`),subRef:db.doc(`rooms/${job.code}/submissions/${job.uid}`)});
@@ -26,11 +26,11 @@ export function createStore(db){
    const [j,r,s]=await Promise.all([tx.get(jobRef),tx.get(roomRef),tx.get(subRef)]),job=j.data(),room=r.data(),sub=s.data();
    if(!job||job.status!=='running'||job.step!==work.step||job.owner!==work.owner||sub?.revision!==job.revision||sub?.attempt!==job.attempt)return null;
    if(!room||room.phase==='stopped'){tx.update(jobRef,{status:'cancelled',leaseUntil:0,finishedAt:now});return null;}
-   if(result.brief){sub.synopsis=result.brief.synopsis;sub.artDirection=result.brief;}
+   if(result.brief){if(!(sub.images||[]).length)sub.imagePlanVersion=3;sub.synopsis=result.brief.synopsis;sub.artDirection=result.brief;}
    else{sub.images=[...(sub.images||[]),result.image];}
    const next=nextStep(sub),p=room.players.find(p=>p.id===job.uid);
-   tx.update(subRef,{images:sub.images||[],synopsis:sub.synopsis||'',artDirection:sub.artDirection||null});
-   if(p){p.generation=next?'queued':'ready';p.generationStage=next||'done';p.generationCount=(sub.images||[]).length;p.generationError=null;p.generationAt=now;p.synopsisReady=!!sub.synopsis;}
+   tx.update(subRef,{imagePlanVersion:sub.imagePlanVersion||2,images:sub.images||[],synopsis:sub.synopsis||'',artDirection:sub.artDirection||null});
+   if(p){p.imagePlanVersion=sub.imagePlanVersion||2;p.generation=next?'queued':'ready';p.generationStage=next||'done';p.generationCount=(sub.images||[]).length;p.generationError=null;p.generationAt=now;p.synopsisReady=!!sub.synopsis;}
    updateFilm(room,{...sub,uid:job.uid});saveRoom(tx,roomRef,room);
    tx.update(jobRef,{status:next?'queued':'done',step:next,leaseUntil:0,nextRunAt:0,lastEnqueuedAt:0,updatedAt:now,...(!next?{finishedAt:now}:{})});
    return next;

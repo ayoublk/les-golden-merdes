@@ -23,15 +23,15 @@ try{
  const direct=await json(`${base}/rooms/${roomCode}`,{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:`Bearer ${a.idToken}`},body:JSON.stringify({fields:{phase:{stringValue:'finished'}}})});assert.equal(direct.status,403);
  await call(host,'beginReveal');await call(a,'submit',{answers},true);
  for(let q=0;q<9;q++){
-  if(q===0){const before=await read(a,`rooms/${roomCode}`);const expected={phase:before.phase,question:before.question,filmIndex:before.filmIndex,voteOpen:before.voteOpen,voteClosed:before.voteClosed,revealedCount:before.revealed.length};await call(host,'revealNext',{expected});await call(host,'revealNext',{expected},true);}else await call(host,'revealNext');await call(host,'openVote',{},true);await call(host,'revealNext');await call(host,'openVote');
+  if(q===0){const before=await read(a,`rooms/${roomCode}`);const expected={phase:before.phase,question:before.question,filmIndex:before.filmIndex,voteOpen:before.voteOpen,voteClosed:before.voteClosed,revealedCount:before.revealed.length};await call(host,'revealNext',{expected});await call(host,'revealNext',{expected},true);}else await call(host,'revealNext');await call(host,'openVote',{},true);await call(host,'revealNext');if(q===3){await call(host,'openVote',{},true);await call(a,'vote',{target:b.localId},true);await call(host,'nextQuestion');continue;}await call(host,'openVote');
   if(q===0)await call(a,'vote',{target:a.localId},true);
   await call(a,'vote',{target:b.localId});await call(a,'vote',{target:b.localId});await call(b,'vote',{target:a.localId});
   const visible=await read(a,`rooms/${roomCode}`);assert.equal(visible.voteCount,2);assert.equal(visible.revealed.length,2);
   await call(host,'closeVote');await call(host,'closeVote',{},true);await call(host,'nextQuestion');
  }
  await call(host,'nextFilm');await call(host,'openVote');await call(a,'vote',{target:b.localId});await call(b,'vote',{target:a.localId});await call(host,'closeVote');await call(host,'finish');
- const final=await read(a,`rooms/${roomCode}`);assert.equal(final.phase,'finished');assert.equal(final.winners.length,2);assert.equal(final.scores[a.localId],14);assert.equal(final.scores[b.localId],14);
- console.log('Live game: lobby, submissions, corrections, 9 reveals/votes, final bonus and tied winners OK');
+ const final=await read(a,`rooms/${roomCode}`);assert.equal(final.phase,'finished');assert.equal(final.winners.length,2);assert.equal(final.scores[a.localId],13);assert.equal(final.scores[b.localId],13);
+ console.log('Live game: lobby, submissions, corrections, 9 reveals, 8 votes, final bonus and tied winners OK');
  console.log('Access rules: private answers, non-member room reads, direct writes and player admin commands rejected');
  for(const action of ['create','vote','revealNext']){const times=durations.filter(x=>x.action===action).map(x=>x.ms).sort((a,b)=>a-b);console.log(action+': median '+Math.round(times[Math.floor(times.length/2)])+' ms ('+times.length+' requests)');}console.log(JSON.stringify({testRoom:roomCode,testHost:hostId,status:'passed'}));
 }finally{

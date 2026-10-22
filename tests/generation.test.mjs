@@ -5,7 +5,7 @@ import {runStep,nextStep,eligible,classifyError,retryDelay,LEASE_MS,MAX_STEP_ATT
 import {IMAGE_MODEL,imageRequest,briefRequest,validateBrief,createProvider} from '../image-functions/provider.mjs';
 import * as game from '../functions/core.mjs';
 const synopsis='Dans un village paisible, des courgettes possédées réclament leur potager. Un duo improbable affronte des légumes revanchards, des effets spéciaux douteux et une bataille de purée en apesanteur. Pour survivre à cette nuit, mieux vaut éviter de manger ses légumes.';
-const brief={synopsis,artDirection:'Amber and teal, moonlight, abandoned vegetable garden, live-action cinema.',characters:'Two gardeners, yellow coat and green overalls; orange-eyed zucchini monster.',poster:'Two gardeners facing a giant zucchini in the garden.',scene1:'The zucchini jumps out of a compost bin.',scene2:'Mashed potato battle in zero gravity.'};
+const brief={synopsis,artDirection:'Amber and teal, moonlight, abandoned vegetable garden, live-action cinema.',characters:'Two gardeners, yellow coat and green overalls; orange-eyed zucchini monster.',poster:'Two gardeners facing a giant zucchini in the garden.',scene1:'The zucchini jumps out of a compost bin.',scene2:'A practical mashed potato effect.',scene3:'Mashed potato battle in zero gravity.',requirements:{scene1:['Zucchini emerging from compost'],scene2:['Practical mashed potato effect'],scene3:['Zero-gravity mashed potato battle']}};
 const answers=['Réalisateur','Casting','Victime','monstres/zombies','Courgettes','Jumpscare','Effet','Scène WTF','La nuit des courgettes'];
 // Serialize transactions like Firestore; also reject reads after writes.
 function memoryDb(){
@@ -28,9 +28,9 @@ function memoryDb(){
   }
  };
 }
-function fixture(n=1){const db=memoryDb(),room=game.newRoom('host');room.phase='writing';const queue=[];for(let i=0;i<n;i++){const uid='p'+i;room.players.push({id:uid,name:uid,submitted:true,generation:'queued'});db.docs.set(`rooms/TEST00/submissions/${uid}`,{answers,images:[],revision:1,attempt:1});db.docs.set(`generationJobs/j${i}`,{code:'TEST00',uid,revision:1,attempt:1,status:'queued',pipelineVersion:2});queue.push({jobId:'j'+i,step:'brief'});}db.docs.set('rooms/TEST00',room);return {db,store:createStore(db),queue};}
+function fixture(n=1){const db=memoryDb(),room=game.newRoom('host');room.phase='writing';const queue=[];for(let i=0;i<n;i++){const uid='p'+i;room.players.push({id:uid,name:uid,submitted:true,generation:'queued'});db.docs.set(`rooms/TEST00/submissions/${uid}`,{imagePlanVersion:3,answers,images:[],revision:1,attempt:1});db.docs.set(`generationJobs/j${i}`,{code:'TEST00',uid,revision:1,attempt:1,status:'queued',pipelineVersion:2});queue.push({jobId:'j'+i,step:'brief'});}db.docs.set('rooms/TEST00',room);return {db,store:createStore(db),queue};}
 const provider={brief:async()=>({brief}),image:async(work,step)=>({image:`https://example.test/${work.job.uid}/${step}.png`})};
-test('nine simultaneous films: all stages complete, duplicate deliveries never duplicate images or synopsis calls',async()=>{const f=fixture(9);let calls=0,active=0,peak=0;const counted={brief:async w=>{calls++;active++;peak=Math.max(peak,active);await new Promise(resolve=>setImmediate(resolve));active--;return provider.brief(w);},image:async(w,s)=>{calls++;return provider.image(w,s);}};const enqueue=async(jobId,step)=>{f.queue.push({jobId,step});};while(f.queue.length){const batch=f.queue.splice(0);await Promise.all(batch.flatMap(item=>[item,item]).map(item=>runStep({...item,store:f.store,provider:counted,enqueue})));}assert.equal(calls,36);assert.ok(peak>1);for(let i=0;i<9;i++){const sub=f.db.docs.get(`rooms/TEST00/submissions/p${i}`);assert.equal(sub.images.length,3);assert.equal(sub.synopsis,synopsis);assert.equal(f.db.docs.get(`generationJobs/j${i}`).status,'done');}assert.ok(f.db.docs.get('rooms/TEST00').players.every(p=>p.generation==='ready'));});
+test('nine simultaneous films: all stages complete, duplicate deliveries never duplicate images or synopsis calls',async()=>{const f=fixture(9);let calls=0,active=0,peak=0;const counted={brief:async w=>{calls++;active++;peak=Math.max(peak,active);await new Promise(resolve=>setImmediate(resolve));active--;return provider.brief(w);},image:async(w,s)=>{calls++;return provider.image(w,s);}};const enqueue=async(jobId,step)=>{f.queue.push({jobId,step});};while(f.queue.length){const batch=f.queue.splice(0);await Promise.all(batch.flatMap(item=>[item,item]).map(item=>runStep({...item,store:f.store,provider:counted,enqueue})));}assert.equal(calls,45);assert.ok(peak>1);for(let i=0;i<9;i++){const sub=f.db.docs.get(`rooms/TEST00/submissions/p${i}`);assert.equal(sub.images.length,4);assert.equal(sub.synopsis,synopsis);assert.equal(f.db.docs.get(`generationJobs/j${i}`).status,'done');}assert.ok(f.db.docs.get('rooms/TEST00').players.every(p=>p.generation==='ready'));});
 test('transient failure retries only the failed stage and respects Retry-After',async()=>{const f=fixture();await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});let calls=0;const flaky={...provider,image:async()=>{calls++;if(calls===1)throw Object.assign(Error('limit'),{providerCode:'rate_limit_exceeded',providerStatus:429,retryAfter:90});return {image:'poster.png'};}};let queued;await runStep({jobId:'j0',step:'poster',store:f.store,provider:flaky,enqueue:async(...args)=>{queued=args;},now:()=>100000,random:()=>0});assert.equal(f.db.docs.get('generationJobs/j0').status,'retrying');assert.equal(queued[2],90);await runStep({jobId:'j0',step:'poster',store:f.store,provider:flaky,enqueue:async()=>{},now:()=>191000});assert.equal(calls,2);assert.equal(f.db.docs.get('rooms/TEST00/submissions/p0').synopsis,synopsis);assert.deepEqual(f.db.docs.get('rooms/TEST00/submissions/p0').images,['poster.png']);});
 test('moderation, missing credits and access errors are terminal, never retried automatically',async()=>{for(const code of ['moderation_blocked','insufficient_quota','credit_balance_exhausted','model_not_found','permission_denied','refusal']){const f=fixture();let queued=0;await runStep({jobId:'j0',step:'brief',store:f.store,provider:{brief:async()=>{throw Object.assign(Error('refused'),{providerCode:code,providerStatus:code==='insufficient_quota'?429:400});}},enqueue:async()=>{queued++;}});assert.equal(queued,0);assert.equal(f.db.docs.get('generationJobs/j0').status,'error');assert.equal(f.db.docs.get('rooms/TEST00').players[0].generationError,code);}});
 test('automatic retries have a strict per-stage limit',async()=>{const f=fixture();let queued=0;const failing={brief:async()=>{throw Object.assign(Error('down'),{providerStatus:503,providerCode:'server_error'});}};for(let i=0;i<MAX_STEP_ATTEMPTS;i++)await runStep({jobId:'j0',step:'brief',store:f.store,provider:failing,enqueue:async()=>{queued++;},now:()=>i*1000000,random:()=>0});assert.equal(queued,MAX_STEP_ATTEMPTS-1);assert.equal(f.db.docs.get('generationJobs/j0').status,'error');});
@@ -42,6 +42,34 @@ test('failure to enqueue the next stage leaves a recoverable outbox entry',async
 test('synopsis remains private until question nine, then appears and can update during films',async()=>{const f=fixture(),room=f.db.docs.get('rooms/TEST00');await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});assert.equal(f.db.docs.get('rooms/TEST00').films.length,0);assert.equal(f.db.docs.get('rooms/TEST00').players[0].synopsis,undefined);const r=f.db.docs.get('rooms/TEST00');r.phase='reveal';r.question=8;r.voteClosed=true;game.nextQuestion(r,{p0:f.db.docs.get('rooms/TEST00/submissions/p0')},{skipImages:true});assert.equal(r.films[0].synopsis,synopsis);f.db.docs.set('rooms/TEST00',r);await runStep({jobId:'j0',step:'poster',store:f.store,provider,enqueue:async()=>{}});assert.equal(f.db.docs.get('rooms/TEST00').films[0].images.length,1);});
 test('Flare quality and shared visual direction, scenes use the saved poster as an image input',()=>{const sub={answers,images:['https://example.test/poster.png'],artDirection:brief};const poster=imageRequest(sub,'poster'),scene=imageRequest(sub,'scene1');assert.equal(poster.body.model,IMAGE_MODEL);assert.equal(poster.body.quality,'high');assert.equal(scene.path,'images/edits');assert.deepEqual(scene.body.images,[{image_url:sub.images[0]}]);assert.ok(scene.body.prompt.includes(brief.artDirection));assert.ok(scene.body.prompt.includes(brief.characters));assert.equal(scene.body.moderation,'auto');assert.equal(poster.body.moderation,'auto');assert.equal(briefRequest(answers).store,false);assert.equal(validateBrief(brief).synopsis,synopsis);assert.throws(()=>validateBrief({...brief,synopsis:'Trop court'}));});
 test('existing stored image is recovered without calling the paid provider again',async()=>{const p=createProvider({apiKey:'test',fetchImpl:async()=>assert.fail('paid API'),artifacts:{read:async()=> 'saved.png'}});assert.deepEqual(await p.image({sub:{}},'poster'),{image:'saved.png'});});
+test('each new scene gets only its own original action and grounded visual requirements',()=>{
+ const raw=[...answers];raw[5]='Un grille-pain surgit du cercueil';raw[6]='Une lune en carton se dégonfle';raw[7]='Une valse de pingouins sur Mars';
+ for(const [step,index] of [['scene1',5],['scene2',6],['scene3',7]]){
+  const {body}=imageRequest({imagePlanVersion:3,answers:raw,images:['poster.png'],synopsis,artDirection:brief},step);
+  const data=JSON.parse(body.prompt.split('AUTHORITATIVE ORIGINAL DATA: ')[1].split('\n')[0]);
+  assert.equal(data.originalAnswer,raw[index]);assert.equal(data.sourceQuestion,index+1);
+  for(const other of [5,6,7].filter(n=>n!==index))assert.ok(!body.prompt.includes(raw[other]));
+  assert.deepEqual(data.filmContext.firstVictimPerformer,raw[2]);
+  assert.ok(body.prompt.includes(JSON.stringify(brief.requirements[step])));
+  assert.ok(body.prompt.includes('highest-priority source'));
+ }
+ assert.throws(()=>validateBrief({...brief,requirements:{...brief.requirements,scene3:[]}}));
+ assert.throws(()=>validateBrief({...brief,scene3:''}));
+});
+test('fourth image resumes alone after failure; legacy films keep their saved three-image plan',async()=>{
+ const f=fixture();const enqueue=async(jobId,step)=>f.queue.push({jobId,step});
+ while(f.queue.length){const task=f.queue.shift();if(task.step==='scene3')break;await runStep({...task,store:f.store,provider,enqueue});}
+ const sub=f.db.docs.get('rooms/TEST00/submissions/p0');assert.equal(sub.images.length,3);assert.equal(nextStep(sub),'scene3');
+ let calls=0;await runStep({jobId:'j0',step:'scene3',store:f.store,provider:{image:async()=>{calls++;throw Object.assign(Error('down'),{providerStatus:503});}},enqueue:async()=>{},now:()=>100000,random:()=>0});
+ assert.equal(f.db.docs.get('rooms/TEST00/submissions/p0').images.length,3);
+ await runStep({jobId:'j0',step:'scene3',store:f.store,provider:{image:async()=>{calls++;return {image:'wtf.png'};}},enqueue:async()=>assert.fail('already complete'),now:()=>200000});
+ assert.equal(calls,2);assert.equal(f.db.docs.get('rooms/TEST00/submissions/p0').images[3],'wtf.png');
+ assert.equal(f.db.docs.get('rooms/TEST00').players[0].generationCount,4);
+ assert.equal(f.db.docs.get('rooms/TEST00').players[0].generation,'ready');
+ assert.equal(nextStep({...sub,imagePlanVersion:2}),null);
+ assert.deepEqual(game.imageLabels({imagePlanVersion:3}),['Affiche','Jumpscare','Effet spécial','Scène WTF']);
+ assert.equal(game.imageLabels({}).length,3);
+});
 test('poster and brief receive the actual film author, separately from the director',async()=>{
  const requests=[],bytes=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(bytes);
  const p=createProvider({apiKey:'test',fetchImpl:async(url,options)=>{
@@ -55,7 +83,7 @@ test('poster and brief receive the actual film author, separately from the direc
  work.sub.artDirection={...brief,poster:'A poster with the obsolete generic author credit.'};
  await p.image(work,'poster');
  const input=JSON.parse(requests[0].body.input),prompt=requests[1].body.prompt;
- assert.equal(input.imaginedBy,name);assert.equal(input.authorCredit,`Imaginé par ${name}`);
+ assert.deepEqual(input.filmFacts,{director:answers[0],leadCast:answers[1],firstVictimPerformer:answers[2],genre:answers[3],threat:answers[4],jumpscare:answers[5],specialEffect:answers[6],wtfScene:answers[7],title:answers[8]});assert.equal(input.imaginedBy,name);assert.equal(input.authorCredit,`Imaginé par ${name}`);
  assert.ok(prompt.includes(`Author credit exactly: ${JSON.stringify(`Imaginé par ${name}`)}`));
  assert.ok(prompt.includes(`Director credit exactly: ${JSON.stringify(`Réalisé par ${answers[0]}`)}`));
  assert.ok(prompt.includes('override any lettering'));assert.ok(!prompt.includes('Imaginé par p0'));

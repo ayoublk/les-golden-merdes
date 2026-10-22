@@ -1,3 +1,4 @@
+import {imageLabels} from './core.mjs';
 const ink=[30,34,29],muted=[99,105,95],orange=[173,77,34],paper=[246,244,237];
 const clean=value=>String(value??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/[\u2011-\u2015]/g,'-');
 // Shared with the Node render tests; all image and font IO is injected.
@@ -44,10 +45,11 @@ export async function createRecapPdf(report,{jsPDF,fonts,loadImage,onProgress=()
    text(question.join('\n'),{size:9,bold:true,color:orange,line:4.5,gap:2});
    text(film.answers[q]||'Réponse indisponible',{size:10,line:5.3,gap:7});
   }
-  page(label+' / LES SCÈNES');text('DEUX SCÈNES DU DÉSASTRE',{size:17,bold:true,gap:6});
-  for(let i=1;i<=2;i++){
-   ensure(113);text(i===1?'SCÈNE 1 / LE JUMPSCARE':'SCÈNE 2 / LA SCÈNE WTF',{size:8,bold:true,color:orange,gap:3,line:4});
-   await image(film.images[i],margin,y,width,100,`Scène ${i}`);y+=106;
+  const labels=imageLabels(film);
+  page(label+' / LES SCÈNES');text(`${labels.length-1} SCÈNES DU DÉSASTRE`,{size:17,bold:true,gap:6});
+  for(let i=1;i<labels.length;i++){
+   ensure(113);text(`SCÈNE ${i} / ${labels[i].toUpperCase()}`,{size:8,bold:true,color:orange,gap:3,line:4});
+   await image(film.images[i],margin,y,width,100,labels[i]);y+=106;
   }
  }
  const winners=report.films.filter(f=>report.winners.includes(f.id));
