@@ -2,6 +2,8 @@
 
 Jeu d’Halloween en français pour 2 à 20 joueurs, animé depuis une régie. L’animateur ne joue pas et ne vote pas. Interface adaptative, mode stream, démo locale et backend Firebase préparé.
 
+Le backend a été rétabli le 23 octobre 2026 avec un runtime Google validé et temporairement figé. Consulter la [procédure de récupération et de déploiement](docs/runtime-recovery-2026-10-23.md) avant un nouveau déploiement Firebase. `node scripts/restore-stable-backend.mjs` inspecte la configuration ; `--apply` restaure la version connue, sans publier de nouveau code.
+
 ## Continuer sans les retardataires
 
 Le timer de cinq minutes reste indicatif. Pendant l’écriture, l’animateur peut choisir **Continuer avec les films reçus**, dès qu’au moins un film a été envoyé. Une confirmation liste les personnes sans questionnaire : elles restent membres du salon comme spectateurs, mais ne participent plus aux révélations, aux votes ni au palmarès. Les réponses déjà envoyées sont conservées. Aucun brouillon local n’est soumis automatiquement. Le passage aux révélations ferme les questionnaires pour tous, comme lors d’un départ normal ; une transaction arbitre les envois simultanés. Sans aucun film reçu, le départ reste impossible.
