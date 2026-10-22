@@ -7,6 +7,27 @@ function ready(r){g.start(r,1000);r.players.forEach(p=>{p.submitted=true;p.gener
 test('pseudos uniques, capacité et fermeture des inscriptions',()=>{const r=setup();assert.throws(()=>g.join(r,'d','alice'));g.start(r);assert.throws(()=>g.join(r,'d','Denis'));assert.equal(g.join(r,'a','Alice').players.length,3);});
 test('validation des neuf questions, genre et longueur',()=>{assert.deepEqual(g.validateAnswers(answers),answers);assert.throws(()=>g.validateAnswers(answers.slice(1)));assert.throws(()=>g.validateAnswers(answers.map((a,i)=>i===3?'comédie':a)));assert.throws(()=>g.validateAnswers(answers.map((a,i)=>i===4?'x'.repeat(501):a)));});
 test('le timer ne change ni la phase ni le droit de réponse',()=>{const r=setup();g.start(r,Date.now()-900000);assert.equal(r.phase,'writing');assert.deepEqual(g.validateAnswers(answers),answers);});
+test('l’animateur peut continuer avec les films reçus et les absents restent spectateurs',()=>{
+ const r=setup(),s=ready(r);r.players[2].submitted=false;delete s.c;
+ assert.throws(()=>g.beginReveal(r));assert.equal(r.players.length,3);
+ g.beginReveal(r,{skipMissing:true});assert.deepEqual(r.players.map(p=>p.id),['a','b']);
+ assert.deepEqual(r.spectators,[{id:'c',name:'Charlie',reason:'missing_submission'}]);
+ assert.equal(g.join(r,'c','Charlie'),r);
+ for(let q=0;q<9;q++){
+  r.players.forEach(()=>g.revealNext(r,s));assert.equal(r.revealed.length,2);
+  if(q!==3){g.openVote(r);assert.throws(()=>g.validateVote(r,'c','a'));assert.throws(()=>g.validateVote(r,'a','c'));g.closeVote(r,{a:'b',b:'a'});}
+  g.nextQuestion(r,s);
+ }
+ assert.equal(r.films.length,2);r.filmIndex=1;g.openVote(r);g.closeVote(r,{a:'b'});g.finish(r);
+ const report=g.exportReport(r,s);assert.equal(report.films.length,2);assert.deepEqual(r.winners,['b']);assert.ok(!report.films.some(f=>f.id==='c'));
+});
+test('aucun envoi ne peut être forcé et un seul film reçu peut terminer la partie sans auto-vote',()=>{
+ const r=setup();g.start(r);assert.throws(()=>g.beginReveal(r,{skipMissing:true}));assert.equal(r.phase,'writing');assert.equal(r.players.length,3);
+ r.players[0].submitted=true;r.players[0].generation='ready';const s={a:{answers,images:[]}};
+ g.beginReveal(r,{skipMissing:true});
+ for(let q=0;q<9;q++){g.revealNext(r,s);if(q!==3){g.openVote(r);assert.throws(()=>g.validateVote(r,'a','a'));g.closeVote(r,{});}g.nextQuestion(r,s);}
+ g.openVote(r);g.closeVote(r,{});g.finish(r);assert.deepEqual(r.winners,['a']);
+});
 test('le genre se révèle sans vote ni points et attend tous les joueurs avant la question suivante',()=>{
  const r=setup(),s=ready(r);g.beginReveal(r);r.question=3;r.scores={a:4};
  assert.throws(()=>g.nextQuestion(r,s));

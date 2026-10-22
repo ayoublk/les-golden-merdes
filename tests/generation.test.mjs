@@ -42,6 +42,13 @@ test('failure to enqueue the next stage leaves a recoverable outbox entry',async
 test('synopsis remains private until question nine, then appears and can update during films',async()=>{const f=fixture(),room=f.db.docs.get('rooms/TEST00');await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});assert.equal(f.db.docs.get('rooms/TEST00').films.length,0);assert.equal(f.db.docs.get('rooms/TEST00').players[0].synopsis,undefined);const r=f.db.docs.get('rooms/TEST00');r.phase='reveal';r.question=8;r.voteClosed=true;game.nextQuestion(r,{p0:f.db.docs.get('rooms/TEST00/submissions/p0')},{skipImages:true});assert.equal(r.films[0].synopsis,synopsis);f.db.docs.set('rooms/TEST00',r);await runStep({jobId:'j0',step:'poster',store:f.store,provider,enqueue:async()=>{}});assert.equal(f.db.docs.get('rooms/TEST00').films[0].images.length,1);});
 test('Flare quality and shared visual direction, scenes use the saved poster as an image input',()=>{const sub={answers,images:['https://example.test/poster.png'],artDirection:brief};const poster=imageRequest(sub,'poster'),scene=imageRequest(sub,'scene1');assert.equal(poster.body.model,IMAGE_MODEL);assert.equal(poster.body.quality,'high');assert.equal(scene.path,'images/edits');assert.deepEqual(scene.body.images,[{image_url:sub.images[0]}]);assert.ok(scene.body.prompt.includes(brief.artDirection));assert.ok(scene.body.prompt.includes(brief.characters));assert.equal(scene.body.moderation,'auto');assert.equal(poster.body.moderation,'auto');assert.equal(briefRequest(answers).store,false);assert.equal(validateBrief(brief).synopsis,synopsis);assert.throws(()=>validateBrief({...brief,synopsis:'Trop court'}));});
 test('existing stored image is recovered without calling the paid provider again',async()=>{const p=createProvider({apiKey:'test',fetchImpl:async()=>assert.fail('paid API'),artifacts:{read:async()=> 'saved.png'}});assert.deepEqual(await p.image({sub:{}},'poster'),{image:'saved.png'});});
+test('background generation keeps spectators authorized to read the room',async()=>{
+ const f=fixture(),room=f.db.docs.get('rooms/TEST00');
+ room.spectators=[{id:'absent',name:'Absent',reason:'missing_submission'}];
+ await runStep({jobId:'j0',step:'brief',store:f.store,provider,enqueue:async()=>{}});
+ assert.deepEqual(f.db.docs.get('rooms/TEST00').memberIds,['p0','absent']);
+ assert.equal(f.db.docs.get('rooms/TEST00').players.length,1);
+});
 test('each new scene gets only its own original action and grounded visual requirements',()=>{
  const raw=[...answers];raw[5]='Un grille-pain surgit du cercueil';raw[6]='Une lune en carton se dégonfle';raw[7]='Une valse de pingouins sur Mars';
  for(const [step,index] of [['scene1',5],['scene2',6],['scene3',7]]){

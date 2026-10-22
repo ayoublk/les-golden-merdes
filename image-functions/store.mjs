@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {eligible,nextStep,LEASE_MS,MAX_STEP_ATTEMPTS} from './pipeline.mjs';
-function saveRoom(tx,ref,room){room.memberIds=room.players.map(p=>p.id);tx.set(ref,room);}
+function saveRoom(tx,ref,room){room.memberIds=[...room.players,...(room.spectators||[])].map(p=>p.id);tx.set(ref,room);}
 function updateFilm(room,sub){const film=room.films?.find(f=>f.id===sub.uid);if(film){film.imagePlanVersion=sub.imagePlanVersion||2;film.images=[...(sub.images||[])];film.synopsis=sub.synopsis||'';film.synopsisStatus=sub.synopsis?'ready':'error';}}
 export function createStore(db){
  const controlRef=db.doc('generationControl/provider');

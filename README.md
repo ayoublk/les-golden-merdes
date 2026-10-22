@@ -2,6 +2,10 @@
 
 Jeu d’Halloween en français pour 2 à 20 joueurs, animé depuis une régie. L’animateur ne joue pas et ne vote pas. Interface adaptative, mode stream, démo locale et backend Firebase préparé.
 
+## Continuer sans les retardataires
+
+Le timer de cinq minutes reste indicatif. Pendant l’écriture, l’animateur peut choisir **Continuer avec les films reçus**, dès qu’au moins un film a été envoyé. Une confirmation liste les personnes sans questionnaire : elles restent membres du salon comme spectateurs, mais ne participent plus aux révélations, aux votes ni au palmarès. Les réponses déjà envoyées sont conservées. Aucun brouillon local n’est soumis automatiquement. Le passage aux révélations ferme les questionnaires pour tous, comme lors d’un départ normal ; une transaction arbitre les envois simultanés. Sans aucun film reçu, le départ reste impossible.
+
 ## Commandes de secours et retours d’action
 
 L’animateur dispose d’un panneau **Secours images** après l’envoi des films, pendant les révélations, la présentation des films et le palmarès. Il affiche l’état et le nombre d’images enregistrées pour chaque joueur. Une relance ciblée conserve les images existantes et reprend les images manquantes. Les films en échec ou bloqués depuis dix minutes peuvent être relancés en lot. Une tâche encore active peut être remplacée immédiatement après confirmation ; un appel IA déjà parti peut encore être facturé. Les tentatives manuelles ne sont plus limitées à trois ; un délai de dix secondes entre deux relances d’un même joueur protège des doubles clics.

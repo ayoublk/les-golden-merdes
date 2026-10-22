@@ -15,7 +15,7 @@ const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const code=()=>[...randomBytes(6)].map(n=>alphabet[n%alphabet.length]).join('');
 const voteKey=room=>room.phase==='films'?'final':String(room.question);
 function assert(ok,message){if(!ok)throw new HttpsError('failed-precondition',message);}
-function saveRoom(tx,ref,room){room.memberIds=room.players.map(p=>p.id);tx.set(ref,room);}
+function saveRoom(tx,ref,room){room.memberIds=[...room.players,...(room.spectators||[])].map(p=>p.id);tx.set(ref,room);}
 export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60},async request=>{
  if(!request.auth)throw new HttpsError('unauthenticated','Une connexion anonyme est nécessaire.');
  const uid=request.auth.uid,data=request.data||{},action=data.action;
@@ -30,7 +30,7 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   const snapshot=await tx.get(ref);assert(snapshot.exists,'Ce salon n’existe pas.');const room=snapshot.data();
   if(action==='join'){assert(uid!==room.hostId,'L’animateur ne participe pas au casting.');game.join(room,uid,data.name);saveRoom(tx,ref,room);return {ok:true};}
   const host=room.hostId===uid,player=room.players.find(p=>p.id===uid);
-  assert(host||player,'Vous ne faites pas partie de ce salon.');
+  assert(host||player||room.spectators?.some(p=>p.id===uid),'Vous ne faites pas partie de ce salon.');
   if(action==='exportPdf'){
    assert(room.phase==='finished','Le récapitulatif est disponible après le palmarès.');
    const docs=await tx.getAll(...room.players.map(p=>ref.collection('submissions').doc(p.id)));
@@ -67,7 +67,7 @@ export const gameAction=onCall({region:REGION,maxInstances:10,timeoutSeconds:60}
   switch(action){
    case 'remove':assert(room.phase==='lobby','Le casting est fermé.');room.players=room.players.filter(p=>p.id!==data.id);break;
    case 'start':game.start(room);break;
-   case 'beginReveal':game.beginReveal(room);break;
+   case 'beginReveal':game.beginReveal(room,{skipMissing:data.skipMissing===true});break;
    case 'revealNext':game.revealNext(room,submissions);break;
    case 'openVote':game.openVote(room);break;
    case 'closeVote':{const votes=await tx.get(ref.collection('votes').where('round','==',voteKey(room)));game.closeVote(room,Object.fromEntries(votes.docs.map(d=>[d.data().voter,d.data().target])));break;}
