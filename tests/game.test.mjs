@@ -7,8 +7,22 @@ function ready(r){g.start(r,1000);r.players.forEach(p=>{p.submitted=true;p.gener
 test('pseudos uniques, capacité et fermeture des inscriptions',()=>{const r=setup();assert.throws(()=>g.join(r,'d','alice'));g.start(r);assert.throws(()=>g.join(r,'d','Denis'));assert.equal(g.join(r,'a','Alice').players.length,3);});
 test('validation des neuf questions, genre et longueur',()=>{assert.deepEqual(g.validateAnswers(answers),answers);assert.throws(()=>g.validateAnswers(answers.slice(1)));assert.throws(()=>g.validateAnswers(answers.map((a,i)=>i===3?'comédie':a)));assert.throws(()=>g.validateAnswers(answers.map((a,i)=>i===4?'x'.repeat(501):a)));});
 test('le timer ne change ni la phase ni le droit de réponse',()=>{const r=setup();g.start(r,Date.now()-900000);assert.equal(r.phase,'writing');assert.deepEqual(g.validateAnswers(answers),answers);});
+test('le genre se révèle sans vote ni points et attend tous les joueurs avant la question suivante',()=>{
+ const r=setup(),s=ready(r);g.beginReveal(r);r.question=3;r.scores={a:4};
+ assert.throws(()=>g.nextQuestion(r,s));
+ r.players.forEach(()=>g.revealNext(r,s));
+ assert.throws(()=>g.openVote(r));
+ // Even a stale client with an open genre ballot cannot vote or award points.
+ r.voteOpen=true;
+ assert.throws(()=>g.validateVote(r,'a','b'));assert.throws(()=>g.closeVote(r,{a:'b'}));
+ g.nextQuestion(r,s);
+ assert.equal(r.question,4);assert.deepEqual(r.scores,{a:4});assert.equal(r.voteOpen,false);
+ assert.equal(r.voteClosed,false);assert.deepEqual(r.revealed,[]);
+ r.players.forEach(()=>g.revealNext(r,s));g.openVote(r);g.closeVote(r,{a:'b'});
+ assert.deepEqual(r.scores,{a:4,b:1});
+});
 test('révélations séquentielles et vote seulement après toutes les réponses',()=>{const r=setup(),s=ready(r);g.beginReveal(r);assert.equal(r.revealed.length,0);assert.throws(()=>g.openVote(r));g.revealNext(r,s);assert.equal(r.revealed[0].id,'a');assert.equal(r.revealed[0].answer,'Réalisateur');assert.throws(()=>g.openVote(r));g.revealNext(r,s);g.revealNext(r,s);g.openVote(r);assert.throws(()=>g.revealNext(r,s));assert.throws(()=>g.validateVote(r,'a','a'));assert.throws(()=>g.validateVote(r,'stranger','a'));});
-test('partie complète : 1 point par voix et 5 points aux gagnants du vote final',()=>{const r=setup(),s=ready(r);g.beginReveal(r);for(let q=0;q<9;q++){r.players.forEach(()=>g.revealNext(r,s));g.openVote(r);g.closeVote(r,{a:'b',b:'a',c:'a'});assert.throws(()=>g.closeVote(r,{}));g.nextQuestion(r,s);}assert.equal(r.phase,'films');assert.equal(r.scores.a,18);assert.equal(r.scores.b,9);assert.equal(r.films[0].title,'Le titre');assert.throws(()=>g.openVote(r));r.filmIndex=2;g.openVote(r);g.closeVote(r,{a:'b',b:'a',c:'a'});assert.equal(r.scores.a,23);assert.equal(r.scores.b,9);g.finish(r);assert.deepEqual(r.winners,['a']);});
+test('partie complète : 1 point par voix et 5 points aux gagnants du vote final',()=>{const r=setup(),s=ready(r);g.beginReveal(r);for(let q=0;q<9;q++){r.players.forEach(()=>g.revealNext(r,s));if(q!==3){g.openVote(r);g.closeVote(r,{a:'b',b:'a',c:'a'});assert.throws(()=>g.closeVote(r,{}));}g.nextQuestion(r,s);}assert.equal(r.phase,'films');assert.equal(r.scores.a,16);assert.equal(r.scores.b,8);assert.equal(r.films[0].title,'Le titre');assert.throws(()=>g.openVote(r));r.filmIndex=2;g.openVote(r);g.closeVote(r,{a:'b',b:'a',c:'a'});assert.equal(r.scores.a,21);assert.equal(r.scores.b,8);g.finish(r);assert.deepEqual(r.winners,['a']);});
 test('égalité finale : bonus de 5 chacun et vainqueurs ex æquo',()=>{const r=setup();r.phase='films';r.filmIndex=2;g.openVote(r);g.closeVote(r,{a:'b',b:'c',c:'a'});assert.deepEqual(r.scores,{a:5,b:5,c:5});g.finish(r);assert.deepEqual(r.winners,['a','b','c']);});
 test('aucune voix : aucun bonus final et tous les scores à zéro ex æquo',()=>{const r=setup();r.phase='films';r.filmIndex=2;g.openVote(r);g.closeVote(r,{});assert.deepEqual(r.scores,{});g.finish(r);assert.equal(r.winners.length,3);});
 test('attente des images, échec toléré et conservation des images disponibles',()=>{const r=setup(),s=ready(r);g.beginReveal(r);r.question=8;r.players.forEach(()=>g.revealNext(r,s));g.openVote(r);g.closeVote(r,{});r.players[0].generation='generating';assert.throws(()=>g.nextQuestion(r,s));assert.equal(r.phase,'reveal');r.players[0].generation='error';g.nextQuestion(r,s);assert.equal(r.phase,'films');assert.equal(r.films[0].images.length,3);});
